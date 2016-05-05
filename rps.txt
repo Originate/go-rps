@@ -1,0 +1,16 @@
+rp server is running somewhere http://server
+
+in pf: start another 'server' on port 3000
+-> node	-> go (current bin)	-> start server on port 3000 of docker container (normal)
+		-> start a new rp client -> open tunnel to server -> server gives random port (e.g. 65535)
+
+in host machine: go to http://server:65535
+Server sends TCP data over tunnel to client
+Client forwards TCP data to localhost:3000
+Client receives response from localhost:3000 and returns it to server
+Server returns it to pf user
+
+
+
+
+

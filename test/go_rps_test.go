@@ -5,6 +5,7 @@ import (
 	. "github.com/originate/go_rps/test/mocks"
 	. "github.com/originate/go_rps/client"
  	. "github.com/onsi/gomega"
+  pb "github.com/Originate/go_rps/protobuf"
 )
 
 var _ = Describe("GoRps Client", func() {
@@ -13,8 +14,10 @@ var _ = Describe("GoRps Client", func() {
   
   BeforeEach(func() {
     tc := make(chan int)
+    rm := make(chan string)
     server = MockServer {
       TunnelChannel: tc,
+      ReceivedMessages: rm,
     }
     serverHost, err := server.Start()
     Expect(err).NotTo(HaveOccurred())
@@ -34,4 +37,21 @@ var _ = Describe("GoRps Client", func() {
     Expect(<-server.TunnelChannel).To(Equal(1))
   })
   
+  Describe("Sending some stuff", func() {
+    Context("Client to server", func() {
+      It("should correctly send", func() {
+        message := pb.TestMessage {
+          Id: 1234,
+          Event: pb.TestMessage_Event{
+            Type: TestMessage_Data,
+          },
+          Data: "hello world",
+        }
+        client.Send(message)
+        Expect(<-rm).To(Equal("hello world"))
+        })
+      })
+    })
 })
+
+

@@ -2,12 +2,15 @@
 
 import (
   "net"
+  "fmt"
+  "bufio"
 )
   
 type MockServer struct {
   Tunnels []*net.TCPConn
   listener *net.TCPListener
   TunnelChannel chan int
+  ReceivedMessages chan string
 }
 
 func (m MockServer) Start() (string, error) {
@@ -38,6 +41,18 @@ func (m MockServer) Stop() error {
   return m.listener.Close()
 }
 
+func (m MockServer) handleConnection(conn *net.TCPConn) {
+	bufReader := bufio.NewReader(conn)
+	for {
+		bytes, err := bufReader.ReadBytes('\n')
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Printf("%s", bytes)
+		m.ReceivedMessages <- string(bytes)
+	}
+}
 
 func (m MockServer) listen() {
 	for {
@@ -46,6 +61,7 @@ func (m MockServer) listen() {
 			panic(err)
 		}
 		m.Tunnels = append(m.Tunnels, conn)
+		go m.handleConnection(conn)
 		m.TunnelChannel <- len(m.Tunnels)
 	}
 }
