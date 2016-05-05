@@ -3,11 +3,11 @@ syntax = "proto3";
 package protobuf;
 
 message TestMessage {
-	required int32 id = 1;
-	required Event event = 2;
-	required string data = 3;
+	int32 id = 1;
+	EventType type = 2;
+	string data = 3;
 
-	enum Event {
+	enum EventType {
 		ConnectionOpen = 0;
 	 	ConnectionClose = 1;
 	 	Data = 2;

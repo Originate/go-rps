@@ -12,18 +12,18 @@ var _ = Describe("GoRps Client", func() {
   var server MockServer
   var client GoRpsClient
   
+  tc := make(chan int, 1)
+  rm := make(chan string, 1)
   BeforeEach(func() {
-    tc := make(chan int)
-    rm := make(chan string)
     server = MockServer {
       TunnelChannel: tc,
       ReceivedMessages: rm,
     }
-    serverHost, err := server.Start()
+    serverTCPAddr, err := server.Start()
     Expect(err).NotTo(HaveOccurred())
     
     client = GoRpsClient {
-      ServerHost: serverHost,
+      ServerTCPAddr: serverTCPAddr,
     }
     client.OpenTunnel(3000)
   })
@@ -40,15 +40,14 @@ var _ = Describe("GoRps Client", func() {
   Describe("Sending some stuff", func() {
     Context("Client to server", func() {
       It("should correctly send", func() {
+        event := pb.TestMessage_Data
         message := pb.TestMessage {
           Id: 1234,
-          Event: pb.TestMessage_Event{
-            Type: TestMessage_Data,
-          },
+          Type: event,
           Data: "hello world",
         }
-        client.Send(message)
-        Expect(<-rm).To(Equal("hello world"))
+        client.Send(&message)
+        Expect(<-server.ReceivedMessages).To(Equal("hello world"))
         })
       })
     })
