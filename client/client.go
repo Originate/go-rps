@@ -1,47 +1,91 @@
 package client
 
 import (
-  "net"
-  "fmt"
-  "bytes"
-  // "bufio"
-  pb "github.com/Originate/go_rps/protobuf"
-  "github.com/golang/protobuf/proto"
+    "net"
+    "fmt"
+    pb "github.com/Originate/go_rps/protobuf"
+    "github.com/golang/protobuf/proto"
+    "strconv"
 )
 
 type GoRpsClient struct {
-  ServerTCPAddr *net.TCPAddr
-  Conn *net.TCPConn
-  port int
+    ServerTCPAddr *net.TCPAddr
+    Conn *net.TCPConn
+    portToConnect int
+    ExposedPort int
+
+    // For testing only
+    TestChannel chan string
 }
 
 
-func (c GoRpsClient) OpenTunnel(tunnelPort int) *net.TCPConn{
-  c.port = tunnelPort
-  var err error
-  c.Conn, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
-  if err != nil {
-    // error
-    fmt.Println("error: " + err.Error())
-    return nil
-  }
-  fmt.Println("Opening tunnel to " + c.ServerTCPAddr.String())
-  if c.Conn == nil {
-    fmt.Println("conn is nil inside")
-  }
-  return c.Conn
+func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
+    c.portToConnect = portToConnect
+    var err error
+    c.Conn, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
+    if err != nil {
+        fmt.Println("error: " + err.Error())
+        return nil, 0
+    }
+    bytes := make ([]byte, 4096)
+    i, err := c.Conn.Read(bytes)
+    if err != nil {
+        fmt.Println(err.Error())
+        return nil, 0
+    }
+    fmt.Printf("Initial Received %s from server\n", bytes)
+    msg := &pb.TestMessage{}
+    err = proto.Unmarshal(bytes[0:i], msg)
+    if err != nil {
+        fmt.Println(err.Error())
+        return nil, 0
+    }
+    c.ExposedPort, err = strconv.Atoi(msg.Data)
+    if err != nil {
+        fmt.Println(err.Error())
+        return nil, 0
+    }
+    fmt.Printf("Got response, port to use is: %d\n", c.ExposedPort)
+
+    go c.listenToServer()
+
+    return c.Conn, c.ExposedPort
+}
+
+func (c GoRpsClient) listenToServer() {
+    for {
+        bytes := make ([]byte, 4096)
+        i, err := c.Conn.Read(bytes)
+        if err != nil {
+            fmt.Println(err.Error())
+            return
+        }
+        fmt.Printf("Received %s from server\n", bytes)
+
+        msg := &pb.TestMessage{}
+        err = proto.Unmarshal(bytes[0:i], msg)
+        if err != nil {
+            fmt.Println(err.Error())
+            return
+        }
+
+        switch msg.Type {
+            case pb.TestMessage_ConnectionOpen: break
+            case pb.TestMessage_ConnectionClose: break
+            case pb.TestMessage_Data: {
+                c.TestChannel <- msg.Data 
+                break
+            }
+            default: 
+        }
+    }
 }
 
 func (c GoRpsClient) Send(msg *pb.TestMessage) {
-  out, err := proto.Marshal(msg)
-  if err != nil {
-    fmt.Println(err.Error())
-    return
-  }
-  fmt.Printf("Sent: %s---\n",out)
-  buf := &bytes.Buffer{}
-  buf.Write(out)
-  if _, err := c.Conn.Write(buf.Bytes()); err != nil {
-    fmt.Println(err.Error())
-  }
+    out, err := proto.Marshal(msg)
+    if err != nil {
+        fmt.Println(err.Error())
+        return
+    }
+    c.Conn.Write(out)
 }

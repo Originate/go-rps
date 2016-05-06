@@ -5,8 +5,7 @@ import (
   "fmt"
   pb "github.com/Originate/go_rps/protobuf"
   "github.com/golang/protobuf/proto"
-  "log"
-  // "io"
+  "strconv"
 )
   
 type MockServer struct {
@@ -14,8 +13,7 @@ type MockServer struct {
   listener *net.TCPListener
 
   // For testing only
-  TunnelChannel chan int
-  ReceivedMessages chan string
+  TestChannel chan string
 }
 
 func (m MockServer) Start() (*net.TCPAddr, error) {
@@ -52,30 +50,20 @@ func (m MockServer) Stop() error {
 }
 
 func (m MockServer) handleConnection(conn *net.TCPConn) {
-	
-	// bufReader := bufio.NewReader(conn)
 	for {		
-		// bytes, err := bufReader.ReadBytes('\r')
-		bytes := make ([]byte, 256)
+		bytes := make ([]byte, 4096)
 		i, err := conn.Read(bytes)
-		// i, err := io.ReadFull(conn, bytes)
 		if err != nil {
-			fmt.Println("Got an error")
-			fmt.Printf("Read %d bytes\n", i)
 			fmt.Println(err.Error())
 			return
 		}
-		fmt.Printf("Received: %s---\n",bytes)
 		msg := &pb.TestMessage{}
-		if err := proto.Unmarshal(bytes, msg); err != nil {
-			log.Fatal(err)//fmt.Println(err.Error())
-			m.ReceivedMessages <- "error"
+		if err := proto.Unmarshal(bytes[0:i], msg); err != nil {
+			fmt.Println(err.Error())
 			return
 		}
-		m.ReceivedMessages <- string(bytes)
-		
+		m.TestChannel <- msg.Data
 	}
-	fmt.Println("end")
 }
 
 func (m MockServer) listen() {
@@ -85,8 +73,18 @@ func (m MockServer) listen() {
 			panic(err)
 		}
 		m.Tunnels = append(m.Tunnels, conn)
+
+		address := &net.TCPAddr {
+			IP: net.IPv4(127,0,0,1),
+			Port: 0,
+		}
+
+		listener, err := net.ListenTCP("tcp", address)
+		addr, err := net.ResolveTCPAddr("tcp", listener.Addr().String())
+		fmt.Printf("Listening for users on port: %d\n", addr.Port)
+		conn.Write([]byte(strconv.Itoa(addr.Port)))
 		
 		go m.handleConnection(conn)
-		m.TunnelChannel <- len(m.Tunnels)
+		m.TestChannel <- strconv.Itoa(len(m.Tunnels))
 	}
 }
