@@ -3,7 +3,10 @@
 import (
   "net"
   "fmt"
-  // "bufio"
+  pb "github.com/Originate/go_rps/protobuf"
+  "github.com/golang/protobuf/proto"
+  "log"
+  // "io"
 )
   
 type MockServer struct {
@@ -52,23 +55,27 @@ func (m MockServer) handleConnection(conn *net.TCPConn) {
 	
 	// bufReader := bufio.NewReader(conn)
 	for {		
-		fmt.Println("Here2")
 		// bytes, err := bufReader.ReadBytes('\r')
 		bytes := make ([]byte, 256)
-		_, err := conn.Read(bytes)
-		fmt.Println("Here3")
+		i, err := conn.Read(bytes)
+		// i, err := io.ReadFull(conn, bytes)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("Got an error")
+			fmt.Printf("Read %d bytes\n", i)
+			fmt.Println(err.Error())
 			return
 		}
-		fmt.Println(string(bytes))
-		fmt.Println(string(len(string(bytes))))
-		if (len(string(bytes)) > 0) {
-			m.ReceivedMessages <- string(bytes)	
+		fmt.Printf("Received: %s---\n",bytes)
+		msg := &pb.TestMessage{}
+		if err := proto.Unmarshal(bytes, msg); err != nil {
+			log.Fatal(err)//fmt.Println(err.Error())
+			m.ReceivedMessages <- "error"
+			return
 		}
+		m.ReceivedMessages <- string(bytes)
 		
-		fmt.Print(".")
 	}
+	fmt.Println("end")
 }
 
 func (m MockServer) listen() {

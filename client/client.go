@@ -3,6 +3,7 @@ package client
 import (
   "net"
   "fmt"
+  "bytes"
   // "bufio"
   pb "github.com/Originate/go_rps/protobuf"
   "github.com/golang/protobuf/proto"
@@ -10,27 +11,25 @@ import (
 
 type GoRpsClient struct {
   ServerTCPAddr *net.TCPAddr
-  conn *net.TCPConn
+  Conn *net.TCPConn
   port int
 }
 
 
-func (c GoRpsClient) OpenTunnel(tunnelPort int) {
+func (c GoRpsClient) OpenTunnel(tunnelPort int) *net.TCPConn{
   c.port = tunnelPort
   var err error
-  c.conn, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
+  c.Conn, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
   if err != nil {
     // error
     fmt.Println("error: " + err.Error())
-    return
+    return nil
   }
   fmt.Println("Opening tunnel to " + c.ServerTCPAddr.String())
-  if c.conn == nil {
-    fmt.Println("0")
+  if c.Conn == nil {
+    fmt.Println("conn is nil inside")
   }
-
-  // fmt.Fprintf(c.conn, "tunnel open msg")//c.conn.Write([]byte("tunnel open msg"))
-  
+  return c.Conn
 }
 
 func (c GoRpsClient) Send(msg *pb.TestMessage) {
@@ -39,29 +38,10 @@ func (c GoRpsClient) Send(msg *pb.TestMessage) {
     fmt.Println(err.Error())
     return
   }
-
-  fmt.Println("Sending data:")
-  fmt.Println(string(out))
-  
-  if c.conn == nil {
-    fmt.Println("2")
-    c.conn, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
-    if err != nil {
-      // error
-      fmt.Println("error: " + err.Error())
-      return
-    }
-    fmt.Println("Opening tunnel to " + c.ServerTCPAddr.String())
-    if c.conn == nil {
-      fmt.Println("3")
-    }
-    
+  fmt.Printf("Sent: %s---\n",out)
+  buf := &bytes.Buffer{}
+  buf.Write(out)
+  if _, err := c.Conn.Write(buf.Bytes()); err != nil {
+    fmt.Println(err.Error())
   }
-  fmt.Fprintf(c.conn, string(out))
-  // fmt.Fprintf(c.conn, string(out))
-  // status, err := bufio.NewReader(c.conn).ReadString('\n')
-  // if err != nil {
-  //   fmt.Println(err.Error())
-  // }
-  // fmt.Println(string(status))
 }
