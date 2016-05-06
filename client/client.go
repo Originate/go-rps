@@ -54,6 +54,7 @@ func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
 
 func (c GoRpsClient) listenToServer() {
     for {
+        fmt.Println("Waiting for data from server...")
         bytes := make ([]byte, 4096)
         i, err := c.Conn.Read(bytes)
         if err != nil {

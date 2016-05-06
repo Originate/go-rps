@@ -119,6 +119,7 @@ func (s GoRpsServer) listenForClients() {
 
 		go s.handleConnection(conn)
 
+		fmt.Printf("Hi, # = %d\n", len(s.ExposedPortsToClients))
 		s.TestChannel <- strconv.Itoa(len(s.ExposedPortsToClients))
 	}
 }

@@ -16,14 +16,17 @@ var _ = Describe("GoRps Server", func() {
     var client GoRpsClient
 
     BeforeEach(func() {
-        testChannel := make(chan string)
-        server = GoRpsServer {}
+        serverTestChannel := make(chan string)
+        clientTestChannel := make(chan string)
+        server = GoRpsServer {
+            TestChannel: serverTestChannel,
+        }
         serverTCPAddr, err := server.Start()
         Expect(err).NotTo(HaveOccurred())
 
         client = GoRpsClient {
             ServerTCPAddr: serverTCPAddr,
-            TestChannel: testChannel,
+            TestChannel: clientTestChannel,
         }
     })
 
@@ -31,10 +34,11 @@ var _ = Describe("GoRps Server", func() {
         
     })
 
-    // It("should accept a connection from a client", func() {
-    //     client.OpenTunnel(3000)
-    //     Expect(<-server.TestChannel).To(Equal("1"))
-    // })
+    It("should accept a connection from a client", func(done Done) {
+        client.OpenTunnel(3000)
+        Expect(<-server.TestChannel).To(Equal("1"))
+        close(done)
+    }, 10)
 
     // Describe("Sending data using protocol buffers", func() {
     //     Context("from server to client", func() {
