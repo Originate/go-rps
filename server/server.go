@@ -1,38 +1,38 @@
 package server
 
 import (
-  "net"
-  "fmt"
-  pb "github.com/Originate/go_rps/protobuf"
-  "github.com/golang/protobuf/proto"
-  "strconv"
+	"fmt"
+	pb "github.com/Originate/go_rps/protobuf"
+	"github.com/golang/protobuf/proto"
+	"net"
+	"strconv"
 )
 
 type GoRpsServer struct {
-	TunnelPort       int
+	TunnelPort int
 	// InboundPortRange []int
-  	ExposedPortsToClients map[int]*net.TCPConn
-  	listener *net.TCPListener
-  	ClientConnToUser map[*net.TCPConn]*net.TCPConn
+	ExposedPortsToClients map[int]*net.TCPConn
+	listener              *net.TCPListener
+	ClientConnToUser      map[*net.TCPConn]*net.TCPConn
 
-  	// For testing only
-  	TestChannel chan string
+	// For testing only
+	// TestChannel chan string
 }
 
 func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 	s.ExposedPortsToClients = make(map[int]*net.TCPConn)
 	s.ClientConnToUser = make(map[*net.TCPConn]*net.TCPConn)
-	address := &net.TCPAddr {
-	  IP: net.IPv4(127,0,0,1),
-	  Port: 0,
+	address := &net.TCPAddr{
+		IP:   net.IPv4(127, 0, 0, 1),
+		Port: 56325, // Constant port for now
 	}
-	
-  	var err error
+
+	var err error
 	s.listener, err = net.ListenTCP("tcp", address)
 	if err != nil {
-	  return nil, err
+		return nil, err
 	}
-	
+
 	go s.listenForClients()
 
 	ret, err := net.ResolveTCPAddr("tcp", s.listener.Addr().String())
@@ -41,29 +41,28 @@ func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 		fmt.Println(err.Error())
 		return nil, err
 	}
-
+	fmt.Printf("port: %d\n", ret.Port)
 	s.TunnelPort = ret.Port
 
 	return ret, nil
 }
 
-
 func (s GoRpsServer) Stop() error {
-  for _, conn := range s.ExposedPortsToClients {
-    err := conn.Close()
-    if err != nil {
-      return err
-    }
-  }
-  return s.listener.Close()
+	for _, conn := range s.ExposedPortsToClients {
+		err := conn.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return s.listener.Close()
 }
 
 func (s GoRpsServer) handleClientConnection(clientConn *net.TCPConn) {
 	// Read data from clients
-	for {		
+	for {
 		serverTag()
 		fmt.Println("Waiting for data from client...")
-		bytes := make ([]byte, 4096)
+		bytes := make([]byte, 4096)
 		i, err := clientConn.Read(bytes)
 		if err != nil {
 			serverTag()
@@ -79,7 +78,7 @@ func (s GoRpsServer) handleClientConnection(clientConn *net.TCPConn) {
 			return
 		}
 		fmt.Printf("Sending: %s\n", msg.Data)
-
+		// s.TestChannel <- msg.Data
 		fmt.Println("---------")
 		// Write to associated user connection
 		serverTag()
@@ -87,8 +86,8 @@ func (s GoRpsServer) handleClientConnection(clientConn *net.TCPConn) {
 		if s.ClientConnToUser[clientConn] != nil {
 			serverTag()
 			fmt.Printf("Writing to: %x\n", s.ClientConnToUser[clientConn])
-			s.ClientConnToUser[clientConn].Write(bytes)	
-			s.TestChannel <- msg.Data
+			s.ClientConnToUser[clientConn].Write(bytes)
+			// s.TestChannel <- msg.Data
 		}
 	}
 }
@@ -96,7 +95,7 @@ func (s GoRpsServer) handleClientConnection(clientConn *net.TCPConn) {
 func (s GoRpsServer) handleUserConnection(userConn *net.TCPConn, clientConn *net.TCPConn) {
 	for {
 		// Read info from user
-		bytes := make ([]byte, 4096)
+		bytes := make([]byte, 4096)
 		i, err := userConn.Read(bytes)
 		if err != nil {
 			serverTag()
@@ -107,7 +106,7 @@ func (s GoRpsServer) handleUserConnection(userConn *net.TCPConn, clientConn *net
 		serverTag()
 		fmt.Printf("Read %s from user @ %x\n", bytes, userConn)
 
-		msg := &pb.TestMessage {
+		msg := &pb.TestMessage{
 			Type: pb.TestMessage_Data,
 			Data: string(bytes[0:i]),
 		}
@@ -128,8 +127,8 @@ func (s GoRpsServer) listenForClients() {
 		serverTag()
 		fmt.Printf("Client connected: %x\n", clientConn)
 		// Choose a random free port to expose to users
-		address := &net.TCPAddr {
-			IP: net.IPv4(127,0,0,1),
+		address := &net.TCPAddr{
+			IP:   net.IPv4(127, 0, 0, 1),
 			Port: 0,
 		}
 
@@ -142,7 +141,7 @@ func (s GoRpsServer) listenForClients() {
 
 		portStr := strconv.Itoa(exposedPort)
 
-		msg := &pb.TestMessage {
+		msg := &pb.TestMessage{
 			Type: pb.TestMessage_ConnectionOpen,
 			Data: portStr,
 		}
@@ -151,20 +150,20 @@ func (s GoRpsServer) listenForClients() {
 			serverTag()
 			fmt.Println(err.Error())
 		}
-		
+
 		// Tell the client what port is exposed to users for their connection
 		clientConn.Write(bytes)
 
 		// Associate the exposed port with the current client
 		s.ExposedPortsToClients[exposedPort] = clientConn
 
-		// Start listening for users 
+		// Start listening for users
 		go s.listenForUsers(userListener, exposedPort, clientConn)
 
 		go s.handleClientConnection(clientConn)
 
 		serverTag()
-		s.TestChannel <- strconv.Itoa(len(s.ExposedPortsToClients))
+		// s.TestChannel <- strconv.Itoa(len(s.ExposedPortsToClients))
 	}
 }
 

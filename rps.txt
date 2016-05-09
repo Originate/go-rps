@@ -26,16 +26,28 @@ server chooses another port U to listen for users on 		/
 server starts listening for users on port U 				/
 server saves U:client relationship 							/
 server returns port U to client 							/
-client returns http://server:U to pf bin 					/ OpenTunnel does this
+	msg { 	
+		Type: ConnectionOpen
+		Data: "<port_no>"
+	}
+client returns http://server:U to pf bin 					/ OpenTunnel() returns this
 pf bin returns http://server:U to user 						?
 
 user connects to http://server:U 							/
 server accepts connection 									/
-user sends info to http://server:U 							/
+user sends info to http://server:U (raw tcp) 				/
 server forwards info to related (U:client) 					/
-client forwards info to server on pf 						
-client returns response to server
-server returns response to user
+	msg {
+		Type: Data
+		Data: "<raw_tcp_string>"
+	}
+client forwards info to server on pf (just msg.Data)	 	/
+client returns response to server 							/
+	msg {
+		Type: Data
+		Data: "<tcp_response>"
+	}
+server returns response to user (just msg.Data)				/
 
 
 End
