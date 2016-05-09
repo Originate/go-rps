@@ -34,10 +34,13 @@ func main() {
 			ServerTCPAddr: serverTCPAddr,
 		}
 
-		client.OpenTunnel(port)
+		conn, _ := client.OpenTunnel(port)
+		if conn == nil {
+			fmt.Printf("Unable to open tunnel.\n")
+			return nil
+		}
 		fmt.Printf("Tunnel opened\n")
 		select {}
-		return nil
 	}
 	app.Run(os.Args)
 }
