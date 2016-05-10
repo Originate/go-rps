@@ -13,32 +13,17 @@ type GoRpsClient struct {
 	ConnToRpsServer       *net.TCPConn
 	portToConnect         int
 	ExposedPort           int
-	ConnToProtectedServer *net.TCPConn
-
-	// For testing only
-	// TestChannel chan string
+	ConnToProtectedServer map[int32]*net.TCPConn
 }
 
 // Returns address of Rps server + port to hit on that server
 func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
-	// Connect to protected server
 	c.portToConnect = portToConnect
-	address := &net.TCPAddr{
-		IP:   net.IPv4(127, 0, 0, 1),
-		Port: c.portToConnect,
-	}
-
-	fmt.Printf("Dialing %s...\n", address.String())
-	var err error
-	c.ConnToProtectedServer, err = net.DialTCP("tcp", nil, address)
-	if err != nil {
-		clientTag()
-		fmt.Println("error: " + err.Error())
-		return nil, 0
-	}
+	c.ConnToProtectedServer = make(map[int32]*net.TCPConn)
 
 	// Connect to rps server
 	fmt.Printf("Dialing %s...\n", c.ServerTCPAddr.String())
+	var err error
 	c.ConnToRpsServer, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
 	if err != nil {
 		clientTag()
@@ -89,7 +74,7 @@ func (c GoRpsClient) listenToServer() {
 			return
 		}
 		clientTag()
-		fmt.Printf("Received %s from server\n", bytes)
+		fmt.Printf("Received from server:\n%s\n", bytes)
 
 		msg := &pb.TestMessage{}
 		err = proto.Unmarshal(bytes[0:i], msg)
@@ -99,20 +84,31 @@ func (c GoRpsClient) listenToServer() {
 			return
 		}
 
+		clientTag()
+		fmt.Printf("Type: %s\n", msg.Type.String())
+
 		switch msg.Type {
+		// Start a new connection to protected server
 		case pb.TestMessage_ConnectionOpen:
+			if c.ConnToProtectedServer[msg.Id] != nil {
+				break
+			}
+			c.openConnection(msg.Id)
 			break
 		case pb.TestMessage_ConnectionClose:
 			break
 		case pb.TestMessage_Data:
 			{
-				// c.TestChannel <- msg.Data
+				if c.ConnToProtectedServer[msg.Id] == nil {
+					c.openConnection(msg.Id)
+				}
+				currentConn := c.ConnToProtectedServer[msg.Id]
 				// Forward data to protected server
-				c.ConnToProtectedServer.Write(bytes[0:i])
+				currentConn.Write(bytes[0:i])
 
 				// Read response and write back to server using protobuf
 				bytes := make([]byte, 4096)
-				i, err := c.ConnToProtectedServer.Read(bytes)
+				i, err := currentConn.Read(bytes)
 				if err != nil {
 					clientTag()
 					fmt.Println(err.Error())
@@ -120,14 +116,32 @@ func (c GoRpsClient) listenToServer() {
 				}
 				msg := &pb.TestMessage{
 					Type: pb.TestMessage_Data,
+					Id:   msg.Id,
 					Data: string(bytes[0:i]),
 				}
 
+				// Send back to server
 				c.Send(msg)
 				break
 			}
 		default:
 		}
+	}
+}
+
+func (c GoRpsClient) openConnection(id int32) {
+	address := &net.TCPAddr{
+		IP:   net.IPv4(127, 0, 0, 1),
+		Port: c.portToConnect,
+	}
+
+	fmt.Printf("Opening new connection for user <%d>\n", id)
+	fmt.Printf("Dialing %s...\n", address.String())
+	var err error
+	c.ConnToProtectedServer[id], err = net.DialTCP("tcp", nil, address)
+	if err != nil {
+		clientTag()
+		fmt.Println("error: " + err.Error())
 	}
 }
 

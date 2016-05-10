@@ -52,29 +52,18 @@ var _ = Describe("GoRps Server", func() {
 	go startProtectedServer(psListener)
 
 	BeforeEach(func() {
-		// serverTestChannel := make(chan string)
-		// clientTestChannel := make(chan string)
-		server = GoRpsServer{
-		// TestChannel: serverTestChannel,
-		}
+		server = GoRpsServer{}
 		serverTCPAddr, err := server.Start()
 		Expect(err).NotTo(HaveOccurred())
 
 		client = GoRpsClient{
 			ServerTCPAddr: serverTCPAddr,
-			// TestChannel: clientTestChannel,
 		}
 	})
 
 	AfterEach(func() {
 
 	})
-
-	It("should accept a connection from a client", func(done Done) {
-		client.OpenTunnel(3000)
-		// Expect(<-server.TestChannel).To(Equal("1"))
-		close(done)
-	}, 3)
 
 	Describe("A user hitting the rps server", func() {
 		Context("to access another protected server", func() {
@@ -91,7 +80,6 @@ var _ = Describe("GoRps Server", func() {
 
 				// Send some data
 				userConn.Write([]byte("Hello world"))
-				// Expect(<-client.TestChannel).To(Equal("Hello world"))
 
 				// Read the response
 				bytes := make([]byte, 4096)
