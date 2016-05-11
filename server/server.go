@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/Originate/go_rps/helper"
 	pb "github.com/Originate/go_rps/protobuf"
 	"github.com/golang/protobuf/proto"
 	"net"
@@ -10,9 +11,7 @@ import (
 
 type GoRpsServer struct {
 	TunnelPort int
-	// ExposedPortsToClients map[int]*net.TCPConn
-	// ClientConnToUser map[*net.TCPConn]*net.TCPConn
-	HostIP net.IP
+	HostIP     net.IP
 
 	UserConn map[int32]*net.TCPConn
 	UserId   map[*net.TCPConn]int32
@@ -28,12 +27,10 @@ func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 		fmt.Printf("Setting default HostIP: localhost\n")
 		s.HostIP = net.IPv4(0, 0, 0, 0)
 	}
-	// s.ExposedPortsToClients = make(map[int]*net.TCPConn)
-	// s.ClientConnToUser = make(map[*net.TCPConn]*net.TCPConn)
 	s.UserConn = make(map[int32]*net.TCPConn)
 	s.UserId = make(map[*net.TCPConn]int32)
 
-	port := 0 //56325 // Make dynamic
+	port := 0
 	address := &net.TCPAddr{
 		IP:   s.HostIP,
 		Port: port,
@@ -169,51 +166,52 @@ func (s GoRpsServer) handleClientConnection(clientConn *net.TCPConn) {
 	for {
 		serverTag()
 		fmt.Println("Waiting for data from client...")
-		bytes := make([]byte, 4096)
-		i, err := clientConn.Read(bytes)
+
+		// Blocks until we receive some data from client
+		msg, err := helper.ReceiveProtobuf(clientConn)
 		if err != nil {
 			serverTag()
 			fmt.Println(err.Error())
-			return
+			continue
 		}
-		serverTag()
-		fmt.Printf("Received %s from client\n", bytes)
-		msg := &pb.TestMessage{}
-		if err := proto.Unmarshal(bytes[0:i], msg); err != nil {
-			serverTag()
-			fmt.Println(err.Error())
-			return
-		}
-		fmt.Printf("Sending: %s\n", msg.Data)
-		// s.TestChannel <- msg.Data
-		fmt.Println("---------")
-		// Write to associated user connection
 
 		serverTag()
-		fmt.Printf("Writing to user<%d>\n", msg.Id)
-		s.UserConn[msg.Id].Write(bytes)
+		fmt.Printf("Received from client: %s, Writing to user<%d>\n", msg.Data, msg.Id)
+		s.UserConn[msg.Id].Write([]byte(msg.Data))
 	}
 }
 
 func (s GoRpsServer) handleUserConnection(userConn *net.TCPConn, clientConn *net.TCPConn) {
 	for {
 		// Read info from user
-		bytes := make([]byte, 4096)
-		i, err := userConn.Read(bytes)
+
+		// This is inside Generate Protobuf
+
+		// bytes := make([]byte, 4096)
+		// i, err := userConn.Read(bytes)
+		// if err != nil {
+		// 	serverTag()
+		// 	fmt.Println(err.Error())
+		// 	return
+		// }
+
+		// serverTag()
+		// fmt.Printf("Read from user <%d>:%s\n", s.UserId[userConn], bytes)
+
+		// msg := &pb.TestMessage{
+		// 	Type: pb.TestMessage_Data,
+		// 	Data: string(bytes[0:i]),
+		// 	Id:   s.UserId[userConn],
+		// }
+
+		msg, err := helper.GenerateProtobuf(userConn, s.UserId[userConn])
 		if err != nil {
 			serverTag()
 			fmt.Println(err.Error())
-			return
+			continue
 		}
-
 		serverTag()
-		fmt.Printf("Read from user <%d>:%s\n", s.UserId[userConn], bytes)
-
-		msg := &pb.TestMessage{
-			Type: pb.TestMessage_Data,
-			Data: string(bytes[0:i]),
-			Id:   s.UserId[userConn],
-		}
+		fmt.Printf("Read from user <%d>:%s\n", s.UserId[userConn], msg.Data)
 
 		// Forward data to associated client
 		sendToClient(msg, clientConn)

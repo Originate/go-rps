@@ -65,35 +65,33 @@ var _ = Describe("GoRps", func() {
 
 	})
 
-	// Describe("A user hitting the rps server", func() {
-	// 	Context("to access another protected server", func() {
-	// 		It("should forward user data to the client, then the protected server", func(done Done) {
-	// 			_, exposedPort := client.OpenTunnel(3000)
-	// 			address := &net.TCPAddr{
-	// 				IP:   net.IPv4(127, 0, 0, 1),
-	// 				Port: exposedPort,
-	// 			}
+	Describe("A user hitting the rps server", func() {
+		Context("to access another protected server", func() {
+			It("should forward user data to the client, then the protected server", func(done Done) {
+				_, exposedPort := client.OpenTunnel(3000)
+				address := &net.TCPAddr{
+					IP:   net.IPv4(127, 0, 0, 1),
+					Port: exposedPort,
+				}
 
-	// 			// Connect to Rps server
-	// 			userConn, err := net.DialTCP("tcp", nil, address)
-	// 			Expect(err).NotTo(HaveOccurred())
+				// Connect to Rps server
+				userConn, err := net.DialTCP("tcp", nil, address)
+				Expect(err).NotTo(HaveOccurred())
 
-	// 			// Send some data
-	// 			userConn.Write([]byte("Hello world"))
+				// Send some data
+				userConn.Write([]byte("Hello world"))
 
-	// 			// Read the response
-	// 			bytes := make([]byte, 4096)
-	// 			i, err := userConn.Read(bytes)
-	// 			msg := &pb.TestMessage{}
-	// 			proto.Unmarshal(bytes[0:i], msg)
-	// 			Expect(err).NotTo(HaveOccurred())
+				// Read the response
+				bytes := make([]byte, 4096)
+				i, err := userConn.Read(bytes)
+				Expect(err).NotTo(HaveOccurred())
 
-	// 			// Should be the response from the simulated protected server
-	// 			Expect(msg.Data).To(Equal("HTTP 200 OK"))
-	// 			close(done)
-	// 		}, 5)
-	// 	})
-	// })
+				// Should be the response from the simulated protected server
+				Expect(bytes[0:i]).To(Equal([]byte("HTTP 200 OK")))
+				close(done)
+			}, 5)
+		})
+	})
 
 	Describe("A user hitting the rps server", func() {
 		Context("sending two messages", func() {

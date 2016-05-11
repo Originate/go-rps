@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/Originate/go_rps/helper"
 	pb "github.com/Originate/go_rps/protobuf"
 	"github.com/golang/protobuf/proto"
 	"net"
@@ -35,21 +36,14 @@ func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
 	// Read which port to use from rps server
 	clientTag()
 	fmt.Printf("Waiting for a response from rps server...\n")
-	bytes := make([]byte, 4096)
-	i, err := c.ConnToRpsServer.Read(bytes)
+
+	msg, err := helper.ReceiveProtobuf(c.ConnToRpsServer)
 	if err != nil {
 		clientTag()
 		fmt.Println(err.Error())
 		return nil, 0
 	}
 
-	msg := &pb.TestMessage{}
-	err = proto.Unmarshal(bytes[0:i], msg)
-	if err != nil {
-		clientTag()
-		fmt.Println(err.Error())
-		return nil, 0
-	}
 	c.ExposedPort, err = strconv.Atoi(msg.Data)
 	if err != nil {
 		clientTag()
@@ -68,20 +62,11 @@ func (c GoRpsClient) listenToServer() {
 	for {
 		clientTag()
 		fmt.Println("Waiting for data from server...")
-		bytes := make([]byte, 4096)
-		i, err := c.ConnToRpsServer.Read(bytes)
+		msg, err := helper.ReceiveProtobuf(c.ConnToRpsServer)
 		if err != nil {
 			clientTag()
 			fmt.Println(err.Error())
-			return
-		}
-
-		msg := &pb.TestMessage{}
-		err = proto.Unmarshal(bytes[0:i], msg)
-		if err != nil {
-			clientTag()
-			fmt.Println(err.Error())
-			return
+			continue
 		}
 
 		clientTag()
@@ -110,9 +95,10 @@ func (c GoRpsClient) listenToServer() {
 					clientTag()
 					fmt.Printf("No connection for user <%d>, trying to establish one\n", msg.Id)
 					c.openConnection(msg.Id)
+					currentConn = c.ConnToProtectedServer[msg.Id]
 				}
 				// Forward data to protected server
-				currentConn.Write(bytes[0:i])
+				currentConn.Write([]byte(msg.Data))
 				break
 			}
 		default:
@@ -126,18 +112,11 @@ func (c GoRpsClient) listenToProtectedServer(id int32) {
 		fmt.Printf("Listening to protected server...\n")
 		currentConn := c.ConnToProtectedServer[id]
 
-		// Read response and write back to server using protobuf
-		bytes := make([]byte, 4096)
-		i, err := currentConn.Read(bytes)
+		msg, err := helper.GenerateProtobuf(currentConn, id)
 		if err != nil {
 			clientTag()
 			fmt.Println(err.Error())
-			return
-		}
-		msg := &pb.TestMessage{
-			Type: pb.TestMessage_Data,
-			Id:   id,
-			Data: string(bytes[0:i]),
+			continue
 		}
 
 		// Send back to server
