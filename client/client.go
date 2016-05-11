@@ -5,6 +5,7 @@ import (
 	"github.com/Originate/go_rps/helper"
 	pb "github.com/Originate/go_rps/protobuf"
 	"github.com/golang/protobuf/proto"
+	"io"
 	"net"
 	"strconv"
 )
@@ -66,32 +67,44 @@ func (c GoRpsClient) listenToServer() {
 		if err != nil {
 			clientTag()
 			fmt.Println(err.Error())
-			continue
+			return
 		}
 
 		clientTag()
 		fmt.Printf("Received msg from server:\nData:\n%s\nType:%s\n", msg.Data, msg.Type.String())
 
+		currentConn := c.ConnToProtectedServer[msg.Id]
 		switch msg.Type {
 		// Start a new connection to protected server
 		case pb.TestMessage_ConnectionOpen:
 			{
 				clientTag()
 				fmt.Printf("First connection for user <%d>\n", msg.Id)
-				if c.ConnToProtectedServer[msg.Id] != nil {
+				if currentConn != nil {
 					clientTag()
 					fmt.Printf("Connection for user <%d> already exists.\n", msg.Id)
-					break
+				} else {
+					c.openConnection(msg.Id)
 				}
-				c.openConnection(msg.Id)
 				break
 			}
 		case pb.TestMessage_ConnectionClose:
-			break
+			{
+				if currentConn != nil {
+					clientTag()
+					fmt.Printf("Closing connection for user <%d>\n", msg.Id)
+					err = currentConn.Close()
+					if err != nil {
+						fmt.Printf("Error closing connection for user <%d>\n", msg.Id)
+						break
+					}
+					delete(c.ConnToProtectedServer, msg.Id)
+				}
+				break
+			}
 		case pb.TestMessage_Data:
 			{
-				currentConn := c.ConnToProtectedServer[msg.Id]
-				if c.ConnToProtectedServer[msg.Id] == nil {
+				if currentConn == nil {
 					clientTag()
 					fmt.Printf("No connection for user <%d>, trying to establish one\n", msg.Id)
 					c.openConnection(msg.Id)
@@ -111,12 +124,35 @@ func (c GoRpsClient) listenToProtectedServer(id int32) {
 		clientTag()
 		fmt.Printf("Listening to protected server...\n")
 		currentConn := c.ConnToProtectedServer[id]
-
+		if currentConn == nil {
+			clientTag()
+			fmt.Printf("Connection for user <%d> has closed. Will stop listening.\n", id)
+			return
+		}
 		msg, err := helper.GenerateProtobuf(currentConn, id)
 		if err != nil {
+			if err == io.EOF {
+				clientTag()
+				fmt.Printf("Local server has disconnected.\n")
+				currentConn.Close()
+
+				// Tell server that it has closed so server can close all users connected
+				msg := &pb.TestMessage{
+					Type: pb.TestMessage_ConnectionClose,
+					Data: pb.TestMessage_ConnectionClose.String(),
+				}
+
+				bytes, err := proto.Marshal(msg)
+				if err != nil {
+					fmt.Printf(err.Error())
+					return
+				}
+				c.ConnToRpsServer.Write(bytes)
+				return
+			}
 			clientTag()
 			fmt.Println(err.Error())
-			continue
+			return
 		}
 
 		// Send back to server

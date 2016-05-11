@@ -5,6 +5,7 @@ import (
 	"github.com/Originate/go_rps/helper"
 	pb "github.com/Originate/go_rps/protobuf"
 	"github.com/golang/protobuf/proto"
+	"io"
 	"net"
 	"strconv"
 )
@@ -16,6 +17,7 @@ type GoRpsServer struct {
 	UserConn map[int32]*net.TCPConn
 	UserId   map[*net.TCPConn]int32
 
+	clientToUsers  map[*net.TCPConn][]*net.TCPConn
 	users          int32
 	clientListener *net.TCPListener
 }
@@ -29,6 +31,7 @@ func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 	}
 	s.UserConn = make(map[int32]*net.TCPConn)
 	s.UserId = make(map[*net.TCPConn]int32)
+	s.clientToUsers = make(map[*net.TCPConn][]*net.TCPConn)
 
 	port := 0
 	address := &net.TCPAddr{
@@ -116,12 +119,12 @@ func (s GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort i
 
 		serverTag()
 		fmt.Println("User connection established")
-		// s.ClientConnToUser[clientConn] = userConn
 
 		serverTag()
 		fmt.Printf("Saving User ID <%d> as connection <%x>\n", s.users, userConn)
 		s.UserConn[s.users] = userConn
 		s.UserId[userConn] = s.users
+		s.clientToUsers[clientConn] = append(s.clientToUsers[clientConn], userConn)
 
 		serverTag()
 		fmt.Printf("Sending ConnectionOpen for user <%d> to client\n", s.users)
@@ -170,6 +173,12 @@ func (s GoRpsServer) handleClientConnection(clientConn *net.TCPConn) {
 		// Blocks until we receive some data from client
 		msg, err := helper.ReceiveProtobuf(clientConn)
 		if err != nil {
+			// if err == io.EOF {
+			serverTag()
+			fmt.Printf("Client has disconnected.\n")
+			s.clientDisconnected(clientConn)
+			return
+			// }
 			serverTag()
 			fmt.Println(err.Error())
 			continue
@@ -177,11 +186,38 @@ func (s GoRpsServer) handleClientConnection(clientConn *net.TCPConn) {
 
 		serverTag()
 		fmt.Printf("Received from client: %s, Writing to user<%d>\n", msg.Data, msg.Id)
-		s.UserConn[msg.Id].Write([]byte(msg.Data))
+
+		switch msg.Type {
+		// Client told us that protected server has disconnected
+		// We need to disconnect all users associated with this client
+		case pb.TestMessage_ConnectionClose:
+			{
+				for _, userConn := range s.clientToUsers[clientConn] {
+					err = userConn.Close()
+					if err != nil {
+						serverTag()
+						fmt.Printf("Error closing connection for user <%d>: %s\n", s.UserId[userConn], err.Error())
+					}
+				}
+				err = clientConn.Close()
+				if err != nil {
+					serverTag()
+					fmt.Printf("Error closing connection for client: %s\n", err.Error())
+				}
+				break
+			}
+		case pb.TestMessage_Data:
+			{
+				s.UserConn[msg.Id].Write([]byte(msg.Data))
+				break
+			}
+		}
+
 	}
 }
 
 func (s GoRpsServer) handleUserConnection(userConn *net.TCPConn, clientConn *net.TCPConn) {
+	userId := s.UserId[userConn]
 	for {
 		// Read info from user
 
@@ -204,17 +240,47 @@ func (s GoRpsServer) handleUserConnection(userConn *net.TCPConn, clientConn *net
 		// 	Id:   s.UserId[userConn],
 		// }
 
-		msg, err := helper.GenerateProtobuf(userConn, s.UserId[userConn])
+		msg, err := helper.GenerateProtobuf(userConn, userId)
 		if err != nil {
+			if err == io.EOF {
+				serverTag()
+				fmt.Printf("User <%d> has disconnected.\n", userId)
+				err = userConn.Close()
+				if err != nil {
+					fmt.Printf("Error closing connection for user <%d>: %s\n", userId, err.Error())
+					continue
+				}
+				s.userDisconnected(userId, clientConn)
+				return
+			}
 			serverTag()
 			fmt.Println(err.Error())
-			continue
+			return
 		}
 		serverTag()
-		fmt.Printf("Read from user <%d>:%s\n", s.UserId[userConn], msg.Data)
+		fmt.Printf("Read from user <%d>:%s\n", userId, msg.Data)
 
 		// Forward data to associated client
 		sendToClient(msg, clientConn)
+	}
+}
+
+func (s GoRpsServer) userDisconnected(userId int32, clientConn *net.TCPConn) {
+	msg := &pb.TestMessage{
+		Type: pb.TestMessage_ConnectionClose,
+		Data: pb.TestMessage_ConnectionClose.String(),
+		Id:   userId,
+	}
+	sendToClient(msg, clientConn)
+}
+
+func (s GoRpsServer) clientDisconnected(clientConn *net.TCPConn) {
+	// Disconnect all users associated with clientConn
+	for _, userConn := range s.clientToUsers[clientConn] {
+		err := userConn.Close()
+		if err != nil {
+			fmt.Printf("Error closing connection for user <%d>\n", s.UserId[userConn])
+		}
 	}
 }
 
