@@ -24,6 +24,7 @@ type GoRpsServer struct {
 func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 	s.users = 0
 	if s.HostIP == nil {
+		serverTag()
 		fmt.Printf("Setting default HostIP: localhost\n")
 		s.HostIP = net.IPv4(0, 0, 0, 0)
 	}
@@ -52,6 +53,7 @@ func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 		fmt.Println(err.Error())
 		return nil, err
 	}
+	serverTag()
 	fmt.Printf("port: %d\n", ret.Port)
 	s.TunnelPort = ret.Port
 
@@ -61,6 +63,7 @@ func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 func (s GoRpsServer) listenForClients() {
 	for {
 		// Listen for a client to connect
+		serverTag()
 		fmt.Printf("Waiting for client connections...\n")
 		clientConn, err := s.clientListener.AcceptTCP()
 		if err != nil {
@@ -99,10 +102,7 @@ func (s GoRpsServer) listenForClients() {
 
 		// Start listening for users
 		go s.listenForUsers(userListener, exposedPort, clientConn)
-
 		go s.handleClientConnection(clientConn)
-
-		serverTag()
 		// s.TestChannel <- strconv.Itoa(len(s.ExposedPortsToClients))
 	}
 }
@@ -132,6 +132,7 @@ func (s GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort i
 		msg := &pb.TestMessage{
 			Type: pb.TestMessage_ConnectionOpen,
 			Id:   s.users,
+			Data: pb.TestMessage_ConnectionOpen.String(),
 		}
 		s.users++
 
@@ -141,7 +142,13 @@ func (s GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort i
 			fmt.Println(err.Error())
 		}
 
-		clientConn.Write(bytes)
+		serverTag()
+		fmt.Printf("Sending: %s\n", bytes)
+		_, err = clientConn.Write(bytes)
+		if err != nil {
+			serverTag()
+			fmt.Println(err.Error())
+		}
 
 		go s.handleUserConnection(userConn, clientConn)
 	}
@@ -220,6 +227,7 @@ func sendToClient(msg *pb.TestMessage, clientConn *net.TCPConn) {
 		fmt.Println(err.Error())
 		return
 	}
+	serverTag()
 	fmt.Printf("Forwarding to client\n")
 	// Forward data to the associated client
 	clientConn.Write(out)
