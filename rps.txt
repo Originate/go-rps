@@ -49,21 +49,21 @@ client opens a tcp connection P to protected server
 	save userToProtectedServer[msg.Id] = P
 
 user sends info to http://server:U (raw tcp) 				
-server forwards info to related client portToClient[U]		
+server forwards info to related client portToClient[U]		.
 	msg {
 		Type: Data
 		Data: "<raw_tcp_string>"
 		Id: i
 	}
-client forwards info to server on pf (just msg.Data)	 	
-	userToProtectedServer[msg.Id].Write(msg.Data)
+client forwards info to server on pf (just msg.Data)	 	.
+	userToProtectedServer[msg.Id].Write(msg.Data)			.
 client returns response to server 							/
 	msg {
 		Type: Data
 		Data: "<tcp_response>"
 		Id: ???
 	}
-server returns response to user (just msg.Data)				
+server returns response to user (just msg.Data)				.
 	users[msg.Id].Write(msg.Data)
 
 

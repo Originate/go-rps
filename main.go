@@ -7,6 +7,7 @@ import (
 	"os"
 )
 
+// Start rps server
 func main() {
 	ip := &net.IPAddr{}
 	if len(os.Args) < 2 {
