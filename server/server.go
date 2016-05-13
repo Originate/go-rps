@@ -84,7 +84,7 @@ func (s *GoRpsServer) listenForClients() {
 
 		msg := &pb.TestMessage{
 			Type: pb.TestMessage_ConnectionOpen,
-			Data: portStr,
+			Data: []byte(portStr),
 			Id:   -1,
 		}
 		bytes, err := proto.Marshal(msg)
@@ -132,7 +132,7 @@ func (s *GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort 
 		msg := &pb.TestMessage{
 			Type: pb.TestMessage_ConnectionOpen,
 			Id:   id32,
-			Data: pb.TestMessage_ConnectionOpen.String(),
+			Data: []byte(pb.TestMessage_ConnectionOpen.String()),
 		}
 		s.users++
 
@@ -255,7 +255,7 @@ func (s *GoRpsServer) listenToUser(userConn *net.TCPConn, clientConn *net.TCPCon
 func (s *GoRpsServer) userDisconnected(userId int32, clientConn *net.TCPConn) {
 	msg := &pb.TestMessage{
 		Type: pb.TestMessage_ConnectionClose,
-		Data: pb.TestMessage_ConnectionClose.String(),
+		Data: []byte(pb.TestMessage_ConnectionClose.String()),
 		Id:   userId,
 	}
 	err := sendToClient(msg, clientConn)

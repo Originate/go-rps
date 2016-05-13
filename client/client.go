@@ -40,7 +40,7 @@ func (c *GoRpsClient) OpenTunnel(portToConnect int) (err error) {
 		return err
 	}
 
-	c.ExposedPort, err = strconv.Atoi(msg.Data)
+	c.ExposedPort, err = strconv.Atoi(string(msg.Data))
 	if err != nil {
 		// fmt.Printf("Error converting port: %s\n", err.Error())
 		return err
@@ -56,7 +56,7 @@ func (c *GoRpsClient) Stop() (err error) {
 	// Tell server that it has closed so server can close all users connected
 	msg := &pb.TestMessage{
 		Type: pb.TestMessage_ConnectionClose,
-		Data: pb.TestMessage_ConnectionClose.String(),
+		Data: []byte(pb.TestMessage_ConnectionClose.String()),
 	}
 
 	bytes, err2 := proto.Marshal(msg)
@@ -154,7 +154,7 @@ func (c *GoRpsClient) listenToProtectedServer(id int32) {
 				// Tell server that it has closed so server can close all users connected
 				msg := &pb.TestMessage{
 					Type: pb.TestMessage_ConnectionClose,
-					Data: pb.TestMessage_ConnectionClose.String(),
+					Data: []byte(pb.TestMessage_ConnectionClose.String()),
 				}
 
 				bytes, err2 := proto.Marshal(msg)

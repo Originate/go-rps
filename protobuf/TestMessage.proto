@@ -4,7 +4,7 @@ package protobuf;
 
 message TestMessage {
 	int32 id = 1;
-	string data = 2;
+	bytes data = 2;
 	enum EventType {
 		ConnectionOpen = 0;
 	 	ConnectionClose = 1;

@@ -36,7 +36,7 @@ func GenerateProtobuf(conn *net.TCPConn, userId int32) (*pb.TestMessage, error) 
 
 	msg := &pb.TestMessage{
 		Type: pb.TestMessage_Data,
-		Data: string(bytes[0:i]),
+		Data: bytes[0:i],
 		Id:   userId,
 	}
 	return msg, nil
