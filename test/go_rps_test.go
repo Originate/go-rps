@@ -17,7 +17,7 @@ import (
 func startProtectedServer(listener *net.TCPListener) {
 	for {
 		conn, _ := listener.AcceptTCP()
-		fmt.Println("PS: Connected")
+		// fmt.Println("PS: Connected")
 		go handleConn(conn)
 	}
 }
@@ -33,7 +33,7 @@ func handleConn(conn *net.TCPConn) {
 			fmt.Printf("PS: %s\n", err.Error())
 			return
 		}
-		fmt.Printf("PS: Received from client:%s\n", bytes[0:i])
+		// fmt.Printf("PS: Received from client:%s\n", bytes[0:i])
 
 		// Write back some fake data
 		conn.Write(append([]byte("Received: "), bytes[0:i]...))
@@ -41,8 +41,8 @@ func handleConn(conn *net.TCPConn) {
 }
 
 var _ = Describe("GoRps", func() {
-	var server GoRpsServer
-	var client GoRpsClient
+	var server *GoRpsServer
+	var client *GoRpsClient
 
 	protectedServerAddr := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
@@ -52,24 +52,111 @@ var _ = Describe("GoRps", func() {
 	psListener, _ := net.ListenTCP("tcp", protectedServerAddr)
 	go startProtectedServer(psListener)
 
+	var exposedPort int
 	BeforeEach(func() {
-		server = GoRpsServer{}
+		fmt.Println("----------------")
+		server = &GoRpsServer{}
 		serverTCPAddr, err := server.Start()
 		Expect(err).NotTo(HaveOccurred())
 
-		client = GoRpsClient{
+		client = &GoRpsClient{
 			ServerTCPAddr: serverTCPAddr,
 		}
+
+		err = client.OpenTunnel(3000)
+		exposedPort = client.ExposedPort
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client.ConnToRpsServer).ShouldNot(BeNil())
 	})
 
 	AfterEach(func() {
+		// server.Stop()
+		// client.Stop()
+		server = nil
+		client = nil
+		fmt.Println("----------------")
+	})
 
+	Describe("Client stops", func() {
+		It("should gracefully stop without error", func() {
+			err := client.Stop()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("Server stops", func() {
+		It("should gracefully stop without error", func() {
+			err := server.Stop()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("Client stops after user connects", func() {
+		It("should gracefully stop without error", func() {
+			address := &net.TCPAddr{
+				IP:   net.IPv4(127, 0, 0, 1),
+				Port: exposedPort,
+			}
+
+			// Connect to Rps server
+			_, err := net.DialTCP("tcp", nil, address)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = client.Stop()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("Server stops after user connects", func() {
+		It("should gracefully stop without error", func(done Done) {
+			address := &net.TCPAddr{
+				IP:   net.IPv4(127, 0, 0, 1),
+				Port: exposedPort,
+			}
+
+			// Connect to Rps server
+			_, err := net.DialTCP("tcp", nil, address)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = server.Stop()
+			Expect(err).NotTo(HaveOccurred())
+			close(done)
+		}, 5)
+	})
+
+	Describe("1 user connects to rps server", func() {
+		Context("user sends a message and disconnects", func() {
+			It("should gracefully stop without error", func() {
+				address := &net.TCPAddr{
+					IP:   net.IPv4(127, 0, 0, 1),
+					Port: exposedPort,
+				}
+
+				// Connect to Rps server
+				userConn, err := net.DialTCP("tcp", nil, address)
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = userConn.Write([]byte("Hello world"))
+				Expect(err).NotTo(HaveOccurred())
+
+				// Read the response
+				bytes := make([]byte, 4096)
+				i, err := userConn.Read(bytes)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Should be the response from the simulated protected server
+				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello world")))
+
+				err = userConn.Close()
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
 	})
 
 	Describe("A user hitting the rps server", func() {
 		Context("to access the protected server", func() {
 			It("should forward user data to the client, then the protected server", func(done Done) {
-				_, exposedPort := client.OpenTunnel(3000)
+				// _, exposedPort := client.OpenTunnel(3000)
 				address := &net.TCPAddr{
 					IP:   net.IPv4(127, 0, 0, 1),
 					Port: exposedPort,
@@ -98,7 +185,7 @@ var _ = Describe("GoRps", func() {
 	Describe("A user hitting the rps server", func() {
 		Context("sending two messages", func() {
 			It("should successfully get both messages to the protected server", func(done Done) {
-				_, exposedPort := client.OpenTunnel(3000)
+				// _, exposedPort := client.OpenTunnel(3000)
 				address := &net.TCPAddr{
 					IP:   net.IPv4(127, 0, 0, 1),
 					Port: exposedPort,
@@ -136,7 +223,7 @@ var _ = Describe("GoRps", func() {
 	Describe("Two users hitting the rps server", func() {
 		Context("to access the same protected server", func() {
 			It("should forward users' datum to the client, then the protected server", func(done Done) {
-				_, exposedPort := client.OpenTunnel(3000)
+				// _, exposedPort := client.OpenTunnel(3000)
 				address := &net.TCPAddr{
 					IP:   net.IPv4(127, 0, 0, 1),
 					Port: exposedPort,
@@ -155,9 +242,9 @@ var _ = Describe("GoRps", func() {
 
 				// First user reads the response
 				bytes := make([]byte, 4096)
-				fmt.Printf("Before read 1\n")
+				// fmt.Printf("Before read 1\n")
 				i, err := userConn0.Read(bytes)
-				fmt.Printf("After read 1\n")
+				// fmt.Printf("After read 1\n")
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
 				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello from user0")))
@@ -167,9 +254,9 @@ var _ = Describe("GoRps", func() {
 
 				// Second user reads the response
 				bytes = make([]byte, 4096)
-				fmt.Printf("Before read 2\n")
+				// fmt.Printf("Before read 2\n")
 				i, err = userConn1.Read(bytes)
-				fmt.Printf("After read 2\n")
+				// fmt.Printf("After read 2\n")
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
 				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello from user1")))

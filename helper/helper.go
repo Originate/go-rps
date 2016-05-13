@@ -1,12 +1,16 @@
 package helper
 
 import (
+	"errors"
 	pb "github.com/Originate/go_rps/protobuf"
 	"github.com/golang/protobuf/proto"
 	"net"
 )
 
 func ReceiveProtobuf(conn *net.TCPConn) (*pb.TestMessage, error) {
+	if conn == nil {
+		return nil, errors.New("Connection closed.")
+	}
 	bytes := make([]byte, 4096)
 	i, err := conn.Read(bytes)
 	if err != nil {
@@ -20,6 +24,9 @@ func ReceiveProtobuf(conn *net.TCPConn) (*pb.TestMessage, error) {
 }
 
 func GenerateProtobuf(conn *net.TCPConn, userId int32) (*pb.TestMessage, error) {
+	if conn == nil {
+		return nil, errors.New("Connection closed.")
+	}
 	// Read info from user
 	bytes := make([]byte, 4096)
 	i, err := conn.Read(bytes)

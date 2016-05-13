@@ -19,19 +19,18 @@ type GoRpsClient struct {
 }
 
 // Returns address of Rps server + port to hit on that server
-func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
+func (c *GoRpsClient) OpenTunnel(portToConnect int) (err error) {
 	c.portToConnect = portToConnect
 	c.ConnToProtectedServer = make(map[int32]*net.TCPConn)
 
 	// Connect to rps server
 	clientTag()
 	// fmt.Printf("Dialing %s...\n", c.ServerTCPAddr.String())
-	var err error
 	c.ConnToRpsServer, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
 	if err != nil {
 		clientTag()
 		// fmt.Printf("Error dialing rps server: %s\n", err.Error())
-		return nil, 0
+		return err
 	}
 
 	// Read which port to use from rps server
@@ -42,24 +41,43 @@ func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
 	if err != nil {
 		clientTag()
 		// fmt.Printf("Error receiving from rps server initially: %s\n", err.Error())
-		return nil, 0
+		return err
 	}
 
 	c.ExposedPort, err = strconv.Atoi(msg.Data)
 	if err != nil {
 		clientTag()
 		// fmt.Printf("Error converting port: %s\n", err.Error())
-		return nil, 0
+		return err
 	}
 	clientTag()
 	// fmt.Printf("Port to use is: %d\n", c.ExposedPort)
 
 	go c.listenToServer()
 
-	return c.ConnToRpsServer, c.ExposedPort
+	return nil
 }
 
-func (c GoRpsClient) listenToServer() {
+func (c *GoRpsClient) Stop() (err error) {
+	// err = c.ConnToRpsServer.Close()
+	// if err != nil {
+	// 	return err
+	// }
+	err = c.ConnToRpsServer.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return err
+	}
+	for _, connToPS := range c.ConnToProtectedServer {
+		err = connToPS.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *GoRpsClient) listenToServer() {
 	for {
 		msg, err := helper.ReceiveProtobuf(c.ConnToRpsServer)
 		if err != nil {
@@ -69,7 +87,7 @@ func (c GoRpsClient) listenToServer() {
 		}
 
 		clientTag()
-		fmt.Printf("Received msg from server for user <%d>: Data: %s Type:%s\n", msg.Id, msg.Data, msg.Type.String())
+		// fmt.Printf("Received msg from server for user <%d>: Data: %s Type:%s\n", msg.Id, msg.Data, msg.Type.String())
 
 		connToPS, ok := c.ConnToProtectedServer[msg.Id]
 		switch msg.Type {
@@ -124,7 +142,7 @@ func (c GoRpsClient) listenToServer() {
 	}
 }
 
-func (c GoRpsClient) listenToProtectedServer(id int32) {
+func (c *GoRpsClient) listenToProtectedServer(id int32) {
 	for {
 		// fmt.Printf("Listening to protected server for user <%d>\n", id)
 		currentConn, ok := c.ConnToProtectedServer[id]
@@ -166,7 +184,7 @@ func (c GoRpsClient) listenToProtectedServer(id int32) {
 	}
 }
 
-func (c GoRpsClient) openConnection(id int32) {
+func (c *GoRpsClient) openConnection(id int32) {
 	address := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
 		Port: c.portToConnect,
@@ -183,7 +201,7 @@ func (c GoRpsClient) openConnection(id int32) {
 	go c.listenToProtectedServer(id)
 }
 
-func (c GoRpsClient) Send(msg *pb.TestMessage) {
+func (c *GoRpsClient) Send(msg *pb.TestMessage) {
 	out, err := proto.Marshal(msg)
 	if err != nil {
 		clientTag()

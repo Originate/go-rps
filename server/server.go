@@ -16,12 +16,13 @@ type GoRpsServer struct {
 	UserConn map[int32]*net.TCPConn
 	UserId   map[*net.TCPConn]int32
 
-	clientToUsers  map[*net.TCPConn][]*net.TCPConn
-	users          int32
-	clientListener *net.TCPListener
+	clientToUsers        map[*net.TCPConn][]*net.TCPConn
+	clientToUserListener map[*net.TCPConn]*net.TCPListener
+	users                int32
+	clientListener       *net.TCPListener
 }
 
-func (s GoRpsServer) Start() (*net.TCPAddr, error) {
+func (s *GoRpsServer) Start() (*net.TCPAddr, error) {
 	s.users = 0
 	if s.HostIP == nil {
 		s.HostIP = net.IPv4(0, 0, 0, 0)
@@ -29,6 +30,7 @@ func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 	s.UserConn = make(map[int32]*net.TCPConn)
 	s.UserId = make(map[*net.TCPConn]int32)
 	s.clientToUsers = make(map[*net.TCPConn][]*net.TCPConn)
+	s.clientToUserListener = make(map[*net.TCPConn]*net.TCPListener)
 
 	port := 0
 	address := &net.TCPAddr{
@@ -54,12 +56,13 @@ func (s GoRpsServer) Start() (*net.TCPAddr, error) {
 	return ret, nil
 }
 
-func (s GoRpsServer) listenForClients() {
+func (s *GoRpsServer) listenForClients() {
+	fmt.Printf("Server listening for clients on: %s\n", s.clientListener.Addr().String())
 	for {
 		// Listen for a client to connect
 		clientConn, err := s.clientListener.AcceptTCP()
 		if err != nil {
-			panic(err)
+			return
 		}
 		go s.listenToClients(clientConn)
 
@@ -97,14 +100,16 @@ func (s GoRpsServer) listenForClients() {
 	}
 }
 
-func (s GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort int, clientConn *net.TCPConn) {
+func (s *GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort int, clientConn *net.TCPConn) {
 	serverTag()
-	// fmt.Printf("Listening for users on addr: %s...\n", userListener.Addr().String())
+	fmt.Printf("Server listening for users on: %s\n", userListener.Addr().String())
+	s.clientToUserListener[clientConn] = userListener
 	for {
 		// Listen for a user connection
 		userConn, err := userListener.AcceptTCP()
+		// fmt.Printf("Accpeted user connection on port: %s\n", userConn.RemoteAddr().String())
 		if err != nil {
-			panic(err)
+			return
 		}
 
 		serverTag()
@@ -141,30 +146,46 @@ func (s GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort i
 	}
 }
 
-func (s GoRpsServer) Stop() error {
-	// for _, conn := range s.ExposedPortsToClients {
-	// 	err := conn.Close()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
+func (s *GoRpsServer) Stop() (err error) {
+	for clientConn, userConns := range s.clientToUsers {
+		for _, userConn := range userConns {
+			err = userConn.Close()
+			if err != nil {
+				fmt.Printf("Error closing user conn\n")
+				return err
+			}
+		}
+		err = clientConn.Close()
+		if err != nil {
+			fmt.Printf("Error closing client conn\n")
+			return err
+		}
+	}
+	for _, userListener := range s.clientToUserListener {
+		err = userListener.Close()
+		if err != nil {
+			return err
+		}
+	}
+	s.clientToUsers = make(map[*net.TCPConn][]*net.TCPConn)
+	s.clientToUserListener = make(map[*net.TCPConn]*net.TCPListener)
 	return s.clientListener.Close()
 }
 
-func (s GoRpsServer) listenToClients(clientConn *net.TCPConn) {
+func (s *GoRpsServer) listenToClients(clientConn *net.TCPConn) {
 	// Read data from clients
 	for {
 		// Blocks until we receive some data from client
 		msg, err := helper.ReceiveProtobuf(clientConn)
 		if err != nil {
-			// if err == io.EOF {
+			if err == io.EOF {
+				serverTag()
+				// fmt.Printf("Client has disconnected.\n")
+				s.clientDisconnected(clientConn)
+				return
+			}
 			serverTag()
-			// fmt.Printf("Client has disconnected.\n")
-			s.clientDisconnected(clientConn)
-			return
-			// }
-			serverTag()
-			// fmt.Println(err.Error())
+			fmt.Printf("Error receiving from client: %s\n", err.Error())
 			continue
 		}
 
@@ -200,7 +221,7 @@ func (s GoRpsServer) listenToClients(clientConn *net.TCPConn) {
 	}
 }
 
-func (s GoRpsServer) listenToUser(userConn *net.TCPConn, clientConn *net.TCPConn) {
+func (s *GoRpsServer) listenToUser(userConn *net.TCPConn, clientConn *net.TCPConn) {
 	userId := s.UserId[userConn]
 	for {
 		// Read info from user
@@ -231,13 +252,15 @@ func (s GoRpsServer) listenToUser(userConn *net.TCPConn, clientConn *net.TCPConn
 				// fmt.Printf("User <%d> has disconnected.\n", userId)
 				err = userConn.Close()
 				if err != nil {
-					// fmt.Printf("Error closing connection for user <%d>: %s\n", userId, err.Error())
+					fmt.Printf("Error closing connection for user <%d>: %s\n", userId, err.Error())
 					continue
 				}
+				fmt.Printf("User disconnected.\n")
 				s.userDisconnected(userId, clientConn)
 				return
 			}
 			serverTag()
+			fmt.Printf("Error receving from user: %s\n", err.Error())
 			// fmt.Printf("Error reading from userConn <%d>: %s\n", userId, err.Error())
 			return
 		}
@@ -249,16 +272,19 @@ func (s GoRpsServer) listenToUser(userConn *net.TCPConn, clientConn *net.TCPConn
 	}
 }
 
-func (s GoRpsServer) userDisconnected(userId int32, clientConn *net.TCPConn) {
+func (s *GoRpsServer) userDisconnected(userId int32, clientConn *net.TCPConn) {
 	msg := &pb.TestMessage{
 		Type: pb.TestMessage_ConnectionClose,
 		Data: pb.TestMessage_ConnectionClose.String(),
 		Id:   userId,
 	}
-	sendToClient(msg, clientConn)
+	err := sendToClient(msg, clientConn)
+	if err != nil {
+		fmt.Printf(err.Error())
+	}
 }
 
-func (s GoRpsServer) clientDisconnected(clientConn *net.TCPConn) {
+func (s *GoRpsServer) clientDisconnected(clientConn *net.TCPConn) {
 	// Disconnect all users associated with clientConn
 	for _, userConn := range s.clientToUsers[clientConn] {
 		err := userConn.Close()
@@ -268,17 +294,18 @@ func (s GoRpsServer) clientDisconnected(clientConn *net.TCPConn) {
 	}
 }
 
-func sendToClient(msg *pb.TestMessage, clientConn *net.TCPConn) {
+func sendToClient(msg *pb.TestMessage, clientConn *net.TCPConn) error {
 	out, err := proto.Marshal(msg)
 	if err != nil {
 		serverTag()
 		// fmt.Println(err.Error())
-		return
+		return err
 	}
 	serverTag()
-	fmt.Printf("Forwarding to client: Id: %d, Data: %s\n", msg.Id, msg.Data)
+	// fmt.Printf("Forwarding to client: Id: %d, Data: %s\n", msg.Id, msg.Data)
 	// Forward data to the associated client
-	clientConn.Write(out)
+	_, err = clientConn.Write(out)
+	return err
 }
 
 func serverTag() {

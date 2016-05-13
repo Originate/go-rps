@@ -68,3 +68,21 @@ server returns response to user (just msg.Data)				.
 
 
 End
+
+tests
+- server starts
+	- client open tunnel to server for protected server (ps)
+		- client stops
+		- server stops
+		- user connects to server
+			- user sends message
+			- user disconnects
+			- client stops
+			- server stops
+		- 2 users connect to same ps port
+			- u1 sends message
+			- both send message
+			- u1 disconnect
+				- u2 send message
+
+
