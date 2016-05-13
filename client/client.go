@@ -25,34 +25,34 @@ func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
 
 	// Connect to rps server
 	clientTag()
-	fmt.Printf("Dialing %s...\n", c.ServerTCPAddr.String())
+	// fmt.Printf("Dialing %s...\n", c.ServerTCPAddr.String())
 	var err error
 	c.ConnToRpsServer, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
 	if err != nil {
 		clientTag()
-		fmt.Println("error: " + err.Error())
+		// fmt.Printf("Error dialing rps server: %s\n", err.Error())
 		return nil, 0
 	}
 
 	// Read which port to use from rps server
 	clientTag()
-	fmt.Printf("Waiting for a response from rps server...\n")
+	// fmt.Printf("Waiting for a response port from rps server...\n")
 
 	msg, err := helper.ReceiveProtobuf(c.ConnToRpsServer)
 	if err != nil {
 		clientTag()
-		fmt.Println(err.Error())
+		// fmt.Printf("Error receiving from rps server initially: %s\n", err.Error())
 		return nil, 0
 	}
 
 	c.ExposedPort, err = strconv.Atoi(msg.Data)
 	if err != nil {
 		clientTag()
-		fmt.Println(err.Error())
+		// fmt.Printf("Error converting port: %s\n", err.Error())
 		return nil, 0
 	}
 	clientTag()
-	fmt.Printf("Port to use is: %d\n", c.ExposedPort)
+	// fmt.Printf("Port to use is: %d\n", c.ExposedPort)
 
 	go c.listenToServer()
 
@@ -61,28 +61,26 @@ func (c GoRpsClient) OpenTunnel(portToConnect int) (*net.TCPConn, int) {
 
 func (c GoRpsClient) listenToServer() {
 	for {
-		clientTag()
-		fmt.Println("Waiting for data from server...")
 		msg, err := helper.ReceiveProtobuf(c.ConnToRpsServer)
 		if err != nil {
 			clientTag()
-			fmt.Println(err.Error())
+			// fmt.Printf("Error receiving from rps server: %s\n", err.Error())
 			return
 		}
 
 		clientTag()
-		fmt.Printf("Received msg from server:\nData:\n%s\nType:%s\n", msg.Data, msg.Type.String())
+		fmt.Printf("Received msg from server for user <%d>: Data: %s Type:%s\n", msg.Id, msg.Data, msg.Type.String())
 
-		currentConn := c.ConnToProtectedServer[msg.Id]
+		connToPS, ok := c.ConnToProtectedServer[msg.Id]
 		switch msg.Type {
 		// Start a new connection to protected server
 		case pb.TestMessage_ConnectionOpen:
 			{
 				clientTag()
-				fmt.Printf("First connection for user <%d>\n", msg.Id)
-				if currentConn != nil {
+				// fmt.Printf("First connection for user <%d>\n", msg.Id)
+				if connToPS != nil {
 					clientTag()
-					fmt.Printf("Connection for user <%d> already exists.\n", msg.Id)
+					// fmt.Printf("Connection for user <%d> already exists.\n", msg.Id)
 				} else {
 					c.openConnection(msg.Id)
 				}
@@ -90,28 +88,35 @@ func (c GoRpsClient) listenToServer() {
 			}
 		case pb.TestMessage_ConnectionClose:
 			{
-				if currentConn != nil {
+				if ok {
 					clientTag()
-					fmt.Printf("Closing connection for user <%d>\n", msg.Id)
-					err = currentConn.Close()
+					// fmt.Printf("Closing connection for user <%d>\n", msg.Id)
+					err = connToPS.Close()
 					if err != nil {
-						fmt.Printf("Error closing connection for user <%d>\n", msg.Id)
+						// fmt.Printf("Error closing connection for user <%d>\n", msg.Id)
 						break
 					}
 					delete(c.ConnToProtectedServer, msg.Id)
+				} else {
+					clientTag()
+					// fmt.Printf("connection to PS for user <%d> is nil\n", msg.Id)
 				}
 				break
 			}
 		case pb.TestMessage_Data:
 			{
-				if currentConn == nil {
+				if !ok {
 					clientTag()
-					fmt.Printf("No connection for user <%d>, trying to establish one\n", msg.Id)
+					// fmt.Printf("No connection for user <%d>, trying to establish one\n", msg.Id)
 					c.openConnection(msg.Id)
-					currentConn = c.ConnToProtectedServer[msg.Id]
+					connToPS = c.ConnToProtectedServer[msg.Id]
 				}
 				// Forward data to protected server
-				currentConn.Write([]byte(msg.Data))
+				_, err = connToPS.Write([]byte(msg.Data))
+				if err != nil {
+					clientTag()
+					// fmt.Printf("Error forwarding data to PS: %s\n", err.Error())
+				}
 				break
 			}
 		default:
@@ -121,19 +126,18 @@ func (c GoRpsClient) listenToServer() {
 
 func (c GoRpsClient) listenToProtectedServer(id int32) {
 	for {
-		clientTag()
-		fmt.Printf("Listening to protected server...\n")
-		currentConn := c.ConnToProtectedServer[id]
-		if currentConn == nil {
+		// fmt.Printf("Listening to protected server for user <%d>\n", id)
+		currentConn, ok := c.ConnToProtectedServer[id]
+		if !ok {
 			clientTag()
-			fmt.Printf("Connection for user <%d> has closed. Will stop listening.\n", id)
+			// fmt.Printf("Connection for user <%d> has closed. Will stop listening.\n", id)
 			return
 		}
 		msg, err := helper.GenerateProtobuf(currentConn, id)
 		if err != nil {
 			if err == io.EOF {
 				clientTag()
-				fmt.Printf("Local server has disconnected.\n")
+				// fmt.Printf("Local server has disconnected.\n")
 				currentConn.Close()
 
 				// Tell server that it has closed so server can close all users connected
@@ -142,20 +146,22 @@ func (c GoRpsClient) listenToProtectedServer(id int32) {
 					Data: pb.TestMessage_ConnectionClose.String(),
 				}
 
-				bytes, err := proto.Marshal(msg)
-				if err != nil {
-					fmt.Printf(err.Error())
+				bytes, err2 := proto.Marshal(msg)
+				if err2 != nil {
+					// fmt.Printf("Error marshalling msg: %s\n", err2.Error())
 					return
 				}
 				c.ConnToRpsServer.Write(bytes)
 				return
 			}
 			clientTag()
-			fmt.Println(err.Error())
+			// fmt.Printf("Connection to PS closed: %s\n", err.Error())
 			return
 		}
 
 		// Send back to server
+		clientTag()
+		// fmt.Printf("Forwarding to rps server: %s for user <%d>\n", msg.Data, msg.Id)
 		c.Send(msg)
 	}
 }
@@ -167,12 +173,12 @@ func (c GoRpsClient) openConnection(id int32) {
 	}
 
 	clientTag()
-	fmt.Printf("Opening new connection for user <%d>\nDialing %s...\n", id, address.String())
+	// fmt.Printf("Opening new connection for user <%d>\nDialing %s...\n", id, address.String())
 	var err error
 	c.ConnToProtectedServer[id], err = net.DialTCP("tcp", nil, address)
 	if err != nil {
 		clientTag()
-		fmt.Println("error: " + err.Error())
+		// fmt.Println("error: " + err.Error())
 	}
 	go c.listenToProtectedServer(id)
 }
@@ -181,12 +187,17 @@ func (c GoRpsClient) Send(msg *pb.TestMessage) {
 	out, err := proto.Marshal(msg)
 	if err != nil {
 		clientTag()
-		fmt.Println(err.Error())
+		// fmt.Printf("Error marshalling: %s\n", err.Error())
 		return
 	}
-	c.ConnToRpsServer.Write(out)
+	_, err = c.ConnToRpsServer.Write(out)
+	if err != nil {
+		clientTag()
+		// fmt.Printf("Error writing to rps server: %s\n", err.Error())
+	}
 }
 
 func clientTag() {
-	fmt.Print("Client: ")
+	// fmt.Print("Client: ")
+	var _, _ = fmt.Print()
 }
