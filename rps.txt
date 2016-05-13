@@ -70,15 +70,15 @@ server returns response to user (just msg.Data)				.
 End
 
 tests
-- server starts
-	- client open tunnel to server for protected server (ps)
-		- client stops
-		- server stops
-		- user connects to server
-			- user sends message
-			- user disconnects
-			- client stops
-			- server stops
+/- server starts 					
+/	- client open tunnel to server for protected server (ps)
+/		- client stops
+/		- server stops
+/		- user connects to server
+/			- user sends message
+/			- user disconnects
+/			- client stops
+/			- server stops
 		- 2 users connect to same ps port
 			- u1 sends message
 			- both send message
@@ -86,3 +86,13 @@ tests
 				- u2 send message
 
 
+issue (race condition): 
+user issues a connect to rps server
+client stops and tells server to disconnect all users (but user has not connected yet)
+server disconnects all 0 users
+user's initial connection requests finishes
+user is connected to the rps server
+
+expected: user should not be connected since client stopped.
+possible solutions:
+	- closing the listening should stop AcceptTCP and return an error...

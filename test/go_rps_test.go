@@ -6,11 +6,13 @@ import (
 	"fmt"
 	// pb "github.com/Originate/go_rps/protobuf"
 	// "github.com/golang/protobuf/proto"
+	// "errors"
 	. "github.com/onsi/gomega"
 	. "github.com/originate/go_rps/client"
 	. "github.com/originate/go_rps/server"
+	"io"
 	"net"
-	// "time"
+	"time"
 )
 
 // Listen for new clients
@@ -43,6 +45,8 @@ func handleConn(conn *net.TCPConn) {
 var _ = Describe("GoRps", func() {
 	var server *GoRpsServer
 	var client *GoRpsClient
+	var waitTime = 1 * time.Second
+	var _ = io.EOF
 
 	protectedServerAddr := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
@@ -71,8 +75,8 @@ var _ = Describe("GoRps", func() {
 
 	AfterEach(func() {
 		// server.Stop()
-		// client.Stop()
 		server = nil
+		// client.Stop()
 		client = nil
 		fmt.Println("----------------")
 	})
@@ -91,20 +95,76 @@ var _ = Describe("GoRps", func() {
 		})
 	})
 
+	Describe("User tries to connect to a stopped server", func() {
+		It("should not allow a connection", func() {
+			address := &net.TCPAddr{
+				IP:   net.IPv4(127, 0, 0, 1),
+				Port: exposedPort,
+			}
+
+			// Stop server
+			err := server.Stop()
+			Expect(err).To(Succeed())
+
+			// Wait for server to stop
+			time.Sleep(waitTime)
+
+			// Try to connect to Rps server
+			conn, err := net.DialTCP("tcp", nil, address)
+			Expect(err).To(HaveOccurred())
+			Expect(conn).To(BeNil())
+		})
+	})
+
+	Describe("User tries to connect to rps server", func() {
+		Context("the client is disconnected", func() {
+			It("should not allow a connection", func() {
+				address := &net.TCPAddr{
+					IP:   net.IPv4(127, 0, 0, 1),
+					Port: exposedPort,
+				}
+				err := client.Stop()
+
+				// Wait for client to stop
+				time.Sleep(waitTime)
+
+				Expect(err).To(Succeed())
+
+				// Try to connect to Rps server
+				conn, err := net.DialTCP("tcp", nil, address)
+				Expect(err).To(HaveOccurred())
+				Expect(conn).To(BeNil())
+			})
+		})
+	})
+
 	Describe("Client stops after user connects", func() {
-		It("should gracefully stop without error", func() {
+		It("should close user's connection", func(done Done) {
 			address := &net.TCPAddr{
 				IP:   net.IPv4(127, 0, 0, 1),
 				Port: exposedPort,
 			}
 
 			// Connect to Rps server
-			_, err := net.DialTCP("tcp", nil, address)
+			conn, err := net.DialTCP("tcp", nil, address)
 			Expect(err).NotTo(HaveOccurred())
+
+			// Wait for user to connect
+			time.Sleep(waitTime)
 
 			err = client.Stop()
 			Expect(err).NotTo(HaveOccurred())
-		})
+
+			// Wait for client to stop
+			time.Sleep(waitTime)
+
+			// Try to read the response
+			bytes := make([]byte, 4096)
+			i, err := conn.Read(bytes)
+			Expect(i).To(Equal(0))
+			Expect(err).To(Equal(io.EOF))
+			close(done)
+		}, 5)
 	})
 
 	Describe("Server stops after user connects", func() {
@@ -113,13 +173,21 @@ var _ = Describe("GoRps", func() {
 				IP:   net.IPv4(127, 0, 0, 1),
 				Port: exposedPort,
 			}
-
 			// Connect to Rps server
-			_, err := net.DialTCP("tcp", nil, address)
+			conn, err := net.DialTCP("tcp", nil, address)
 			Expect(err).NotTo(HaveOccurred())
+
+			// Let the connection establish
+			time.Sleep(waitTime)
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred())
+
+			// Try to read the response
+			bytes := make([]byte, 4096)
+			i, err := conn.Read(bytes)
+			Expect(i).To(Equal(0))
+			Expect(err).To(Equal(io.EOF))
 			close(done)
 		}, 5)
 	})
@@ -242,30 +310,27 @@ var _ = Describe("GoRps", func() {
 
 				// First user reads the response
 				bytes := make([]byte, 4096)
-				// fmt.Printf("Before read 1\n")
 				i, err := userConn0.Read(bytes)
-				// fmt.Printf("After read 1\n")
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
 				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello from user0")))
+				err = userConn0.Close()
+				Expect(err).To(Succeed())
 
 				// Second user sends some data
 				userConn1.Write([]byte("Hello from user1"))
 
 				// Second user reads the response
 				bytes = make([]byte, 4096)
-				// fmt.Printf("Before read 2\n")
 				i, err = userConn1.Read(bytes)
-				// fmt.Printf("After read 2\n")
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
 				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello from user1")))
 
-				userConn0.Close()
-				userConn1.Close()
-
+				err = userConn1.Close()
+				Expect(err).To(Succeed())
 				close(done)
-			}, 10)
+			}, 5)
 		})
 	})
 })
