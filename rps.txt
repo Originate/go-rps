@@ -79,11 +79,18 @@ tests
 /			- user disconnects
 /			- client stops
 /			- server stops
-		- 2 users connect to same ps port
+/		- 2 users connect to same ps port
+/			- u1 sends message
+/			- both send message
+/			- u1 disconnect
+/				- u2 send message
+	- 2 clients open tunnels to two different protected servers
+		- 2 users connect to each ps port
 			- u1 sends message
-			- both send message
-			- u1 disconnect
-				- u2 send message
+				- u2 sends message
+					- u1 disconnects
+						- u2 sends message
+							- u2 disconnects
 
 
 issue (race condition): 

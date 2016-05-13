@@ -1,9 +1,9 @@
 package go_rps_test
 
 import (
-	. "github.com/onsi/ginkgo"
-	// . "github.com/originate/go_rps/test/mocks"
 	"fmt"
+	. "github.com/onsi/ginkgo"
+	"github.com/originate/go_rps/test/mocks"
 	// pb "github.com/Originate/go_rps/protobuf"
 	// "github.com/golang/protobuf/proto"
 	// "errors"
@@ -15,46 +15,13 @@ import (
 	"time"
 )
 
-// Listen for new clients
-func startProtectedServer(listener *net.TCPListener) {
-	for {
-		conn, _ := listener.AcceptTCP()
-		// fmt.Println("PS: Connected")
-		go handleConn(conn)
-	}
-}
-
-// Simulate a simple server that reads data and returns something
-// This is the server that will be protected and require a proxy to access it
-func handleConn(conn *net.TCPConn) {
-	for {
-		// Read info from client
-		bytes := make([]byte, 4096)
-		i, err := conn.Read(bytes)
-		if err != nil {
-			fmt.Printf("PS: %s\n", err.Error())
-			return
-		}
-		// fmt.Printf("PS: Received from client:%s\n", bytes[0:i])
-
-		// Write back some fake data
-		conn.Write(append([]byte("Received: "), bytes[0:i]...))
-	}
-}
-
 var _ = Describe("GoRps", func() {
 	var server *GoRpsServer
 	var client *GoRpsClient
 	var waitTime = 1 * time.Second
 	var _ = io.EOF
 
-	protectedServerAddr := &net.TCPAddr{
-		IP:   net.IPv4(127, 0, 0, 1),
-		Port: 3000,
-	}
-
-	psListener, _ := net.ListenTCP("tcp", protectedServerAddr)
-	go startProtectedServer(psListener)
+	go mocks.StartProtectedServer(3000)
 
 	var exposedPort int
 	BeforeEach(func() {
@@ -331,6 +298,14 @@ var _ = Describe("GoRps", func() {
 				Expect(err).To(Succeed())
 				close(done)
 			}, 5)
+		})
+	})
+
+	Describe("Two users connect to rps server", func() {
+		Context("to access two different protected servers", func() {
+			It("should successfully deliver data", func() {
+
+			})
 		})
 	})
 })
