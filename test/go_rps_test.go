@@ -20,21 +20,26 @@ var _ = Describe("GoRps", func() {
 	var client *GoRpsClient
 	var waitTime = 1 * time.Second
 	var _ = io.EOF
-
-	go mocks.StartProtectedServer(3000)
-
+	var serverTCPAddr *net.TCPAddr
+	server1Message := "First server"
+	protectedServer := &mocks.MockProtectedServer{
+		ServerMessage: server1Message,
+		Port:          3000,
+	}
+	protectedServer.StartProtectedServer()
+	var err error
 	var exposedPort int
 	BeforeEach(func() {
 		fmt.Println("----------------")
 		server = &GoRpsServer{}
-		serverTCPAddr, err := server.Start()
+		serverTCPAddr, err = server.Start()
 		Expect(err).NotTo(HaveOccurred())
 
 		client = &GoRpsClient{
 			ServerTCPAddr: serverTCPAddr,
 		}
 
-		err = client.OpenTunnel(3000)
+		err = client.OpenTunnel(protectedServer.Port)
 		exposedPort = client.ExposedPort
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client.ConnToRpsServer).ShouldNot(BeNil())
@@ -180,7 +185,7 @@ var _ = Describe("GoRps", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				// Should be the response from the simulated protected server
-				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello world")))
+				Expect(bytes[0:i]).To(Equal([]byte(server1Message + ": Hello world")))
 
 				err = userConn.Close()
 				Expect(err).NotTo(HaveOccurred())
@@ -210,7 +215,7 @@ var _ = Describe("GoRps", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				// Should be the response from the simulated protected server
-				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello world")))
+				Expect(bytes[0:i]).To(Equal([]byte(server1Message + ": Hello world")))
 				userConn.Close()
 				close(done)
 			}, 10)
@@ -238,7 +243,7 @@ var _ = Describe("GoRps", func() {
 				i, err := userConn.Read(bytes)
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
-				Expect(bytes[0:i]).To(Equal([]byte("Received: Message 1")))
+				Expect(bytes[0:i]).To(Equal([]byte(server1Message + ": Message 1")))
 
 				// Send msg 2
 				userConn.Write([]byte("Message 2"))
@@ -248,7 +253,7 @@ var _ = Describe("GoRps", func() {
 				i, err = userConn.Read(bytes)
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
-				Expect(bytes[0:i]).To(Equal([]byte("Received: Message 2")))
+				Expect(bytes[0:i]).To(Equal([]byte(server1Message + ": Message 2")))
 				userConn.Close()
 				close(done)
 			}, 10)
@@ -280,7 +285,7 @@ var _ = Describe("GoRps", func() {
 				i, err := userConn0.Read(bytes)
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
-				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello from user0")))
+				Expect(bytes[0:i]).To(Equal([]byte(server1Message + ": Hello from user0")))
 				err = userConn0.Close()
 				Expect(err).To(Succeed())
 
@@ -292,7 +297,7 @@ var _ = Describe("GoRps", func() {
 				i, err = userConn1.Read(bytes)
 				Expect(err).NotTo(HaveOccurred())
 				// Should be the response from the simulated protected server
-				Expect(bytes[0:i]).To(Equal([]byte("Received: Hello from user1")))
+				Expect(bytes[0:i]).To(Equal([]byte(server1Message + ": Hello from user1")))
 
 				err = userConn1.Close()
 				Expect(err).To(Succeed())
@@ -303,9 +308,67 @@ var _ = Describe("GoRps", func() {
 
 	Describe("Two users connect to rps server", func() {
 		Context("to access two different protected servers", func() {
-			It("should successfully deliver data", func() {
+			It("should successfully deliver data", func(done Done) {
+				server2Message := "Second server"
+				protectedServer2 := &mocks.MockProtectedServer{
+					ServerMessage: server2Message,
+					Port:          3001,
+				}
+				protectedServer2.StartProtectedServer()
 
-			})
+				address1 := &net.TCPAddr{
+					IP:   net.IPv4(127, 0, 0, 1),
+					Port: exposedPort,
+				}
+
+				client2 := &GoRpsClient{
+					ServerTCPAddr: serverTCPAddr,
+				}
+
+				err = client2.OpenTunnel(protectedServer2.Port)
+				exposedPort2 := client2.ExposedPort
+				Expect(err).NotTo(HaveOccurred())
+				Expect(client.ConnToRpsServer).ShouldNot(BeNil())
+
+				address2 := &net.TCPAddr{
+					IP:   net.IPv4(127, 0, 0, 1),
+					Port: exposedPort2,
+				}
+
+				// First user connects to Rps server
+				userConn0, err := net.DialTCP("tcp", nil, address1)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Second user connects to Rps server
+				userConn1, err := net.DialTCP("tcp", nil, address2)
+				Expect(err).NotTo(HaveOccurred())
+
+				// First user sends some data
+				userConn0.Write([]byte("Hello from user0"))
+
+				// First user reads the response
+				bytes := make([]byte, 4096)
+				i, err := userConn0.Read(bytes)
+				Expect(err).NotTo(HaveOccurred())
+				// Should be the response from the simulated protected server
+				Expect(bytes[0:i]).To(Equal([]byte(server1Message + ": Hello from user0")))
+				err = userConn0.Close()
+				Expect(err).To(Succeed())
+
+				// Second user sends some data
+				userConn1.Write([]byte("Hello from user1"))
+
+				// Second user reads the response
+				bytes = make([]byte, 4096)
+				i, err = userConn1.Read(bytes)
+				Expect(err).NotTo(HaveOccurred())
+				// Should be the response from the simulated protected server
+				Expect(bytes[0:i]).To(Equal([]byte(server2Message + ": Hello from user1")))
+
+				err = userConn1.Close()
+				Expect(err).To(Succeed())
+				close(done)
+			}, 5)
 		})
 	})
 })

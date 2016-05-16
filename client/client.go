@@ -13,63 +13,52 @@ import (
 type GoRpsClient struct {
 	ServerTCPAddr         *net.TCPAddr
 	ConnToRpsServer       *net.TCPConn
-	portToConnect         int
+	ConnToProtectedServer map[int32]*net.TCPConn // UserID -> connection to PS
 	ExposedPort           int
-	ConnToProtectedServer map[int32]*net.TCPConn
+	protectedServerPort   int
 }
 
-// Returns address of Rps server + port to hit on that server
-func (c *GoRpsClient) OpenTunnel(portToConnect int) (err error) {
-	c.portToConnect = portToConnect
+// Returns the port to hit on the server to reach the protected server
+func (c *GoRpsClient) OpenTunnel(protectedServerPort int) (err error) {
+	c.protectedServerPort = protectedServerPort
 	c.ConnToProtectedServer = make(map[int32]*net.TCPConn)
 
 	// Connect to rps server
-	// fmt.Printf("Dialing %s...\n", c.ServerTCPAddr.String())
 	c.ConnToRpsServer, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
 	if err != nil {
-		// fmt.Printf("Error dialing rps server: %s\n", err.Error())
+		fmt.Printf("Error dialing rps server: %s\n", err.Error())
 		return err
 	}
 
-	// Read which port to use from rps server
-	// fmt.Printf("Waiting for a response port from rps server...\n")
-
+	// Wait for rps server to tell us which port is exposed
 	msg, err := helper.ReceiveProtobuf(c.ConnToRpsServer)
 	if err != nil {
-		// fmt.Printf("Error receiving from rps server initially: %s\n", err.Error())
+		fmt.Printf("Error receiving exposed port from rps server: %s\n", err.Error())
 		return err
 	}
 
 	c.ExposedPort, err = strconv.Atoi(string(msg.Data))
 	if err != nil {
-		// fmt.Printf("Error converting port: %s\n", err.Error())
 		return err
 	}
-	// fmt.Printf("Port to use is: %d\n", c.ExposedPort)
-
-	go c.listenToServer()
-
+	go c.handleServerConn()
 	return nil
 }
 
 func (c *GoRpsClient) Stop() (err error) {
-	// Tell server that it has closed so server can close all users connected
+	// Tell server that client has stopped so server can close all users connected
 	msg := &pb.TestMessage{
 		Type: pb.TestMessage_ConnectionClose,
 		Data: []byte(pb.TestMessage_ConnectionClose.String()),
+		Id:   -1,
 	}
 
 	bytes, err2 := proto.Marshal(msg)
 	if err2 != nil {
-		// fmt.Printf("Error marshalling msg: %s\n", err2.Error())
+		fmt.Printf("Error marshalling msg: %s\n", err2.Error())
 		return
 	}
 	c.ConnToRpsServer.Write(bytes)
-	// err = c.ConnToRpsServer.Close()
-	// if err != nil {
-	// 	fmt.Printf("Error closing conn to rps server: %s\n", err.Error())
-	// 	return err
-	// }
 	for _, connToPS := range c.ConnToProtectedServer {
 		err = connToPS.Close()
 		if err != nil {
@@ -80,26 +69,24 @@ func (c *GoRpsClient) Stop() (err error) {
 	return nil
 }
 
-func (c *GoRpsClient) listenToServer() {
+func (c *GoRpsClient) handleServerConn() {
 	for {
+		// Blocks until we receive a message from the server
 		msg, err := helper.ReceiveProtobuf(c.ConnToRpsServer)
 		if err != nil {
-			// fmt.Printf("Error receiving from rps server: %s\n", err.Error())
+			fmt.Printf("Error receiving from rps server: %s\n", err.Error())
 			return
 		}
-
-		// fmt.Printf("Received msg from server for user <%d>: Data: %s Type:%s\n", msg.Id, msg.Data, msg.Type.String())
 
 		connToPS, ok := c.ConnToProtectedServer[msg.Id]
 		switch msg.Type {
 		// Start a new connection to protected server
 		case pb.TestMessage_ConnectionOpen:
 			{
-				// fmt.Printf("First connection for user <%d>\n", msg.Id)
-				if connToPS != nil {
-					// fmt.Printf("Connection for user <%d> already exists.\n", msg.Id)
-				} else {
+				if connToPS == nil {
 					c.openConnection(msg.Id)
+				} else {
+					fmt.Printf("Connection for user <%d> already exists.\n", msg.Id)
 				}
 				break
 			}
@@ -121,14 +108,13 @@ func (c *GoRpsClient) listenToServer() {
 		case pb.TestMessage_Data:
 			{
 				if !ok {
-					// fmt.Printf("No connection for user <%d>, trying to establish one\n", msg.Id)
 					c.openConnection(msg.Id)
 					connToPS = c.ConnToProtectedServer[msg.Id]
 				}
 				// Forward data to protected server
 				_, err = connToPS.Write([]byte(msg.Data))
 				if err != nil {
-					// fmt.Printf("Error forwarding data to PS: %s\n", err.Error())
+					fmt.Printf("Error forwarding data to PS: %s\n", err.Error())
 				}
 				break
 			}
@@ -139,16 +125,14 @@ func (c *GoRpsClient) listenToServer() {
 
 func (c *GoRpsClient) listenToProtectedServer(id int32) {
 	for {
-		// fmt.Printf("Listening to protected server for user <%d>\n", id)
 		currentConn, ok := c.ConnToProtectedServer[id]
 		if !ok {
-			// fmt.Printf("Connection for user <%d> has closed. Will stop listening.\n", id)
+			fmt.Printf("Connection for user <%d> has closed.\n", id)
 			return
 		}
 		msg, err := helper.GenerateProtobuf(currentConn, id)
 		if err != nil {
 			if err == io.EOF {
-				// fmt.Printf("Local server has disconnected.\n")
 				currentConn.Close()
 
 				// Tell server that it has closed so server can close all users connected
@@ -159,18 +143,17 @@ func (c *GoRpsClient) listenToProtectedServer(id int32) {
 
 				bytes, err2 := proto.Marshal(msg)
 				if err2 != nil {
-					// fmt.Printf("Error marshalling msg: %s\n", err2.Error())
+					fmt.Printf("Error marshalling msg: %s\n", err2.Error())
 					return
 				}
 				c.ConnToRpsServer.Write(bytes)
 				return
 			}
-			// fmt.Printf("Connection to PS closed: %s\n", err.Error())
+			fmt.Printf("Connection to PS closed: %s\n", err.Error())
 			return
 		}
 
 		// Send back to server
-		// fmt.Printf("Forwarding to rps server: %s for user <%d>\n", msg.Data, msg.Id)
 		c.Send(msg)
 	}
 }
@@ -178,14 +161,12 @@ func (c *GoRpsClient) listenToProtectedServer(id int32) {
 func (c *GoRpsClient) openConnection(id int32) {
 	address := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
-		Port: c.portToConnect,
+		Port: c.protectedServerPort,
 	}
-
-	// fmt.Printf("Opening new connection for user <%d>\nDialing %s...\n", id, address.String())
 	var err error
 	c.ConnToProtectedServer[id], err = net.DialTCP("tcp", nil, address)
 	if err != nil {
-		// fmt.Println("error: " + err.Error())
+		fmt.Printf("Error open: " + err.Error())
 	}
 	go c.listenToProtectedServer(id)
 }
@@ -193,11 +174,11 @@ func (c *GoRpsClient) openConnection(id int32) {
 func (c *GoRpsClient) Send(msg *pb.TestMessage) {
 	out, err := proto.Marshal(msg)
 	if err != nil {
-		// fmt.Printf("Error marshalling: %s\n", err.Error())
+		fmt.Printf("Error marshalling: %s\n", err.Error())
 		return
 	}
 	_, err = c.ConnToRpsServer.Write(out)
 	if err != nil {
-		// fmt.Printf("Error writing to rps server: %s\n", err.Error())
+		fmt.Printf("Error writing to rps server: %s\n", err.Error())
 	}
 }

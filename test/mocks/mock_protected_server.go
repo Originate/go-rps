@@ -5,28 +5,33 @@ import (
 	"net"
 )
 
+type MockProtectedServer struct {
+	ServerMessage string
+	Port          int
+}
+
 // Listen for new clients
-func StartProtectedServer(port int) {
+func (mps *MockProtectedServer) StartProtectedServer() {
 	protectedServerAddr := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
-		Port: port,
+		Port: mps.Port,
 	}
 
 	psListener, _ := net.ListenTCP("tcp", protectedServerAddr)
-	go listenForConn(psListener)
+	go mps.listenForConn(psListener)
 
 }
 
-func listenForConn(listener *net.TCPListener) {
+func (mps *MockProtectedServer) listenForConn(listener *net.TCPListener) {
 	for {
 		conn, _ := listener.AcceptTCP()
-		go handleConn(conn)
+		go mps.handleConn(conn)
 	}
 }
 
 // Simulate a simple server that reads data and returns something
 // This is the server that will be protected and require a proxy to access it
-func handleConn(conn *net.TCPConn) {
+func (mps *MockProtectedServer) handleConn(conn *net.TCPConn) {
 	for {
 		// Read info from client
 		bytes := make([]byte, 4096)
@@ -35,9 +40,7 @@ func handleConn(conn *net.TCPConn) {
 			fmt.Printf("PS: %s\n", err.Error())
 			return
 		}
-		// fmt.Printf("PS: Received from client:%s\n", bytes[0:i])
-
 		// Write back some fake data
-		conn.Write(append([]byte("Received: "), bytes[0:i]...))
+		conn.Write(append([]byte(mps.ServerMessage+": "), bytes[0:i]...))
 	}
 }
