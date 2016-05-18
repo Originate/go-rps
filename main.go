@@ -22,9 +22,7 @@ func main() {
 		}
 	}
 
-	server := GoRpsServer{
-		HostIP: ip.IP,
-	}
+	server := GoRpsServer{}
 	serverTCPAddr, err := server.Start()
 	if err != nil {
 		log.Fatal(err)

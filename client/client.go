@@ -24,6 +24,7 @@ func (c *GoRpsClient) OpenTunnel(protectedServerPort int) (err error) {
 	c.ConnToProtectedServer = make(map[int32]*net.TCPConn)
 
 	// Connect to rps server
+	fmt.Printf("Dialing rps server @: %s\n", c.ServerTCPAddr.String())
 	c.ConnToRpsServer, err = net.DialTCP("tcp", nil, c.ServerTCPAddr)
 	if err != nil {
 		fmt.Printf("Error dialing rps server: %s\n", err.Error())
@@ -164,9 +165,11 @@ func (c *GoRpsClient) openConnection(id int32) {
 		Port: c.protectedServerPort,
 	}
 	var err error
+	fmt.Printf("Dialing protected server @: %s\n", address.String())
 	c.ConnToProtectedServer[id], err = net.DialTCP("tcp", nil, address)
 	if err != nil {
 		fmt.Printf("Error open: " + err.Error())
+		return
 	}
 	go c.listenToProtectedServer(id)
 }
