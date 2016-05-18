@@ -6,6 +6,7 @@ import (
 	pb "github.com/Originate/go_rps/protobuf"
 	"github.com/golang/protobuf/proto"
 	"io"
+	"log"
 	"net"
 	"strconv"
 )
@@ -27,7 +28,7 @@ func (s *GoRpsServer) Start() (*net.TCPAddr, error) {
 
 	address := &net.TCPAddr{
 		IP:   net.IPv4(0, 0, 0, 0),
-		Port: 0,
+		Port: 34567,
 	}
 
 	var err error
@@ -48,7 +49,7 @@ func (s *GoRpsServer) Start() (*net.TCPAddr, error) {
 }
 
 func (s *GoRpsServer) listenForClients() {
-	fmt.Printf("RPS Server listening for clients on: %s\n", s.clientListener.Addr().String())
+	log.Printf("RPS Server listening for clients on: %s\n", s.clientListener.Addr().String())
 	for {
 		// Blocks until a client connects
 		clientConn, err := s.clientListener.AcceptTCP()
@@ -77,7 +78,7 @@ func (s *GoRpsServer) listenForClients() {
 		}
 		bytes, err := proto.Marshal(msg)
 		if err != nil {
-			fmt.Println(err.Error())
+			log.Println(err.Error())
 			return
 		}
 
@@ -93,22 +94,22 @@ func (s *GoRpsServer) listenForClients() {
 }
 
 func (s *GoRpsServer) listenForUsers(userListener *net.TCPListener, exposedPort int, clientConn *net.TCPConn) {
-	fmt.Printf("Server listening for users on: %s\n", userListener.Addr().String())
+	log.Printf("Server listening for users on: %s\n", userListener.Addr().String())
 	for {
 		// Listen for a user connection
 		userConn, err := userListener.AcceptTCP()
 		if err != nil {
-			fmt.Println(err.Error())
+			log.Println(err.Error())
 			return
 		}
 
-		fmt.Println("User connection established")
+		log.Println("User connection established")
 
 		// User memory address as ID
 		addrStr := fmt.Sprintf("%x", userConn)
 		id, err := strconv.ParseInt(addrStr[3:len(addrStr)-2], 16, 64)
 		if err != nil {
-			fmt.Printf("Error converting addr to id: %s\n", err.Error())
+			log.Printf("Error converting addr to id: %s\n", err.Error())
 			continue
 		}
 		id32 := int32(id)
@@ -141,7 +142,7 @@ func (s *GoRpsServer) Stop() (err error) {
 	// Close the client listener
 	err = s.clientListener.Close()
 	if err != nil {
-		fmt.Printf("Error closing client listener: %s\n", err.Error())
+		log.Printf("Error closing client listener: %s\n", err.Error())
 	}
 
 	// Close all existing client connections and their associated user connections
@@ -149,13 +150,13 @@ func (s *GoRpsServer) Stop() (err error) {
 		for _, userConn := range userConns {
 			err = userConn.Close()
 			if err != nil {
-				fmt.Printf("Error closing user conn: %s\n", err.Error())
+				log.Printf("Error closing user conn: %s\n", err.Error())
 				return err
 			}
 		}
 		err = clientConn.Close()
 		if err != nil {
-			fmt.Printf("Error closing client conn: %s\n", err.Error())
+			log.Printf("Error closing client conn: %s\n", err.Error())
 			return err
 		}
 	}
@@ -173,12 +174,12 @@ func (s *GoRpsServer) handleClientConn(clientConn *net.TCPConn) {
 			if err == io.EOF {
 				err = clientConn.Close()
 				if err != nil {
-					fmt.Printf("Error closing client connection: %s\n", clientConn)
+					log.Printf("Error closing client connection: %s\n", clientConn)
 				}
 				s.clientDisconnected(clientConn)
 				return
 			}
-			fmt.Printf("Error receiving from client: %s\n", err.Error())
+			log.Printf("Error receiving from client: %s\n", err.Error())
 			return
 		}
 
@@ -190,7 +191,7 @@ func (s *GoRpsServer) handleClientConn(clientConn *net.TCPConn) {
 				// Close user listener
 				err = s.clientToUserListener[clientConn].Close()
 				if err != nil {
-					fmt.Printf("Error closing user listener: %s\n", err.Error())
+					log.Printf("Error closing user listener: %s\n", err.Error())
 				}
 				delete(s.clientToUserListener, clientConn)
 
@@ -198,7 +199,7 @@ func (s *GoRpsServer) handleClientConn(clientConn *net.TCPConn) {
 				for _, userConn := range s.clientToUserConn[clientConn] {
 					err = userConn.Close()
 					if err != nil {
-						fmt.Printf("Error closing connection for user <%d>: %s\n", s.UserId[userConn], err.Error())
+						log.Printf("Error closing connection for user <%d>: %s\n", s.UserId[userConn], err.Error())
 					}
 				}
 				delete(s.clientToUserConn, clientConn)
@@ -206,7 +207,7 @@ func (s *GoRpsServer) handleClientConn(clientConn *net.TCPConn) {
 				// Close client connection
 				err = clientConn.Close()
 				if err != nil {
-					fmt.Printf("Error closing connection for client: %s\n", err.Error())
+					log.Printf("Error closing connection for client: %s\n", err.Error())
 				}
 				return
 			}
@@ -216,7 +217,7 @@ func (s *GoRpsServer) handleClientConn(clientConn *net.TCPConn) {
 			{
 				_, err = s.UserConn[msg.Id].Write([]byte(msg.Data))
 				if err != nil {
-					fmt.Printf("Error writing to user: %s\n", err.Error())
+					log.Printf("Error writing to user: %s\n", err.Error())
 					return
 				}
 				break
@@ -234,24 +235,24 @@ func (s *GoRpsServer) handleUserConn(userConn *net.TCPConn, clientConn *net.TCPC
 		msg, err := helper.GenerateProtobuf(userConn, userId)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("User <%d> has disconnected.\n", userId)
+				log.Printf("User <%d> has disconnected.\n", userId)
 				err = userConn.Close()
 				if err != nil {
-					fmt.Printf("Error closing connection for user <%d>: %s\n", userId, err.Error())
+					log.Printf("Error closing connection for user <%d>: %s\n", userId, err.Error())
 					return
 				}
-				fmt.Printf("User <%d> connection successfully closed.\n", userId)
+				log.Printf("User <%d> connection successfully closed.\n", userId)
 				s.userDisconnected(userId, clientConn)
 				return
 			}
-			fmt.Printf("Error receving from user: %s\n", err.Error())
+			log.Printf("Error receving from user: %s\n", err.Error())
 			return
 		}
 
 		// Forward data to associated client
 		err = sendToClient(msg, clientConn)
 		if err != nil {
-			fmt.Printf("Error forwarding data to client: %s\n", err.Error())
+			log.Printf("Error forwarding data to client: %s\n", err.Error())
 		}
 	}
 }
@@ -265,7 +266,7 @@ func (s *GoRpsServer) userDisconnected(userId int32, clientConn *net.TCPConn) {
 	}
 	err := sendToClient(msg, clientConn)
 	if err != nil {
-		fmt.Printf("Error forwarding data to client: %s\n", err.Error())
+		log.Printf("Error forwarding data to client: %s\n", err.Error())
 	}
 }
 
@@ -273,14 +274,14 @@ func (s *GoRpsServer) clientDisconnected(clientConn *net.TCPConn) {
 	// Close user listener associated with client
 	err := s.clientToUserListener[clientConn].Close()
 	if err != nil {
-		fmt.Printf("Error closing user listener: %s\n", err.Error())
+		log.Printf("Error closing user listener: %s\n", err.Error())
 	}
 
 	// Disconnect all users associated with client
 	for _, userConn := range s.clientToUserConn[clientConn] {
 		err := userConn.Close()
 		if err != nil {
-			fmt.Printf("Error closing connection for user <%d>\n", s.UserId[userConn])
+			log.Printf("Error closing connection for user <%d>\n", s.UserId[userConn])
 		}
 	}
 }
