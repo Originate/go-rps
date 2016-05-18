@@ -102,7 +102,7 @@ func (c *GoRpsClient) handleServerConn() {
 					}
 					delete(c.ConnToProtectedServer, msg.Id)
 				} else {
-					log.Printf("connection to PS for user <%d> is nil\n", msg.Id)
+					log.Printf("Connection to PS for user <%d> is already nil\n", msg.Id)
 				}
 				break
 			}
