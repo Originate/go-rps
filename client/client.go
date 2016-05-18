@@ -169,7 +169,7 @@ func (c *GoRpsClient) openConnection(id int32) {
 	c.ConnToProtectedServer[id], err = net.DialTCP("tcp", nil, address)
 	if err != nil {
 		log.Printf("Error open: " + err.Error())
-		// delete(c.ConnToProtectedServer, id)
+		delete(c.ConnToProtectedServer, id)
 		return
 	}
 	go c.listenToProtectedServer(id)
