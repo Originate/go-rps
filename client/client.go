@@ -21,7 +21,6 @@ type GoRpsClient struct {
 // Returns the port to hit on the server to reach the protected server
 func (c *GoRpsClient) OpenTunnel(protectedServerPort int) (err error) {
 	c.protectedServerPort = protectedServerPort
-	log.Printf("protected Server Port is: %d\n", c.protectedServerPort)
 	c.ConnToProtectedServer = make(map[int32]*net.TCPConn)
 
 	// Connect to rps server
@@ -161,7 +160,6 @@ func (c *GoRpsClient) listenToProtectedServer(id int32) {
 }
 
 func (c *GoRpsClient) openConnection(id int32) {
-	log.Printf("in open connection protected Server Port is: %d\n", c.protectedServerPort)
 	address := &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
 		Port: c.protectedServerPort,
@@ -171,6 +169,7 @@ func (c *GoRpsClient) openConnection(id int32) {
 	c.ConnToProtectedServer[id], err = net.DialTCP("tcp", nil, address)
 	if err != nil {
 		log.Printf("Error open: " + err.Error())
+		delete(c.ConnToProtectedServer, id)
 		return
 	}
 	go c.listenToProtectedServer(id)
