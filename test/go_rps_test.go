@@ -3,13 +3,10 @@ package go_rps_test
 import (
 	"fmt"
 	. "github.com/onsi/ginkgo"
-	"github.com/originate/go_rps/test/mocks"
-	// pb "github.com/Originate/go_rps/protobuf"
-	// "github.com/golang/protobuf/proto"
-	// "errors"
 	. "github.com/onsi/gomega"
 	. "github.com/originate/go_rps/client"
 	. "github.com/originate/go_rps/server"
+	"github.com/originate/go_rps/test/mocks"
 	"io"
 	"net"
 	"time"
@@ -46,9 +43,7 @@ var _ = Describe("GoRps", func() {
 	})
 
 	AfterEach(func() {
-		// server.Stop()
 		server = nil
-		// client.Stop()
 		client = nil
 		fmt.Println("----------------")
 	})
