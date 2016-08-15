@@ -25,7 +25,7 @@ Assuming the Go environment is correctly set up on your machine...
 Assuming you have a server running locally @ localhost:\<SOME_PORT\> that you want to expose
 
 1. Create a client, passing it the rps server address (45.33.109.4:34567, or you can host your own below)
-  ```go
+```go
 serverAddress := &net.TCPAddr{
   IP: net.IPv4(45, 33, 109, 4),
   Port: 34567,
@@ -36,11 +36,11 @@ client := go_rps.GoRpsClient{
 }
 ```
 2. Open a tunnel to your hidden server running on localhost:\<SOME_PORT\> and extract the exposed address.
-  ```go
+```go
 err = client.OpenTunnel(SOME_PORT)
 if err != nil {
-	log.Printf("Unable to open tunnel.\n")
-	return nil
+  log.Printf("Unable to open tunnel.\n")
+  return nil
 }
 
 exposedTCPAddr := *serverAddress
